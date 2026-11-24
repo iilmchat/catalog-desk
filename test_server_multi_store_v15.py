@@ -123,6 +123,15 @@ class MultiStoreBatchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mod.batch_record(payload)
 
+    def test_stores_registry_and_cross_chain_compare(self):
+        stores = mod.stores_data()
+        self.assertEqual({s["chain"] for s in stores}, {"5ka", "perekrestok"})
+        compared = mod.compare_data({"plu": ["100001"]})
+        self.assertEqual(len(compared["items"]), 2)
+        self.assertEqual(
+            sorted(x["chain"] for x in compared["items"]), ["5ka", "perekrestok"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

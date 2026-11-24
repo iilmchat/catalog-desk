@@ -96,3 +96,11 @@
 .batch-warning-v14{font-size:8px;line-height:1.55;color:#8a9989;margin-top:10px}.batch-warning-v14 a{color:#477c49;font-weight:800;text-decoration:underline}
 @media(max-width:900px){.batch-controls-v14{grid-template-columns:1fr 1fr}.batch-buttons-v14{grid-column:1/-1}}
 @media(max-width:560px){.batch-controls-v14{grid-template-columns:1fr}.batch-buttons-v14{grid-column:auto}.batch-progress-meta{flex-direction:column}}
+
+/* V15: переключатель сети и сравнение магазинов */
+.store-switch #store-chain{display:block;margin:3px 0 1px;border:0;background:transparent;color:#173a29;font-size:13px;font-weight:800;outline:none;cursor:pointer;max-width:150px}
+.store-switch .store-sap{font-size:9px;letter-spacing:.08em;color:#7b8a7c}
+.compare-panel{margin-top:18px}.compare-panel .panel-head{flex-wrap:wrap;gap:12px}.compare-panel #compare-plu{min-width:170px}
+.compare-row{display:grid;grid-template-columns:minmax(120px,1fr) 100px 100px 80px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #eef1eb;font-size:11px}
+.compare-row:last-child{border-bottom:0}.compare-row strong{color:#173a29}.compare-row .compare-price{font-weight:800;color:#31513a}
+@media(max-width:560px){.compare-row{grid-template-columns:1fr 1fr}}

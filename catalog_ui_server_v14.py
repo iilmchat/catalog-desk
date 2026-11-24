@@ -52,6 +52,38 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 EXPECTED_SAP = get_store(DEFAULT_CHAIN)["default_sap"]
 
 
+def stores_data() -> list[dict]:
+    """Список сетей для переключателя в интерфейсе."""
+    return [
+        {
+            "chain": chain, "title": cfg["title"], "domain": cfg["domain"],
+            "sap_codes": list(cfg["sap_codes"]), "default_sap": cfg["default_sap"],
+            "product_url_prefix": cfg["product_url_prefix"],
+        }
+        for chain, cfg in STORES.items()
+    ]
+
+
+def compare_data(params: dict) -> dict:
+    """Один PLU в разных сетях/магазинах."""
+    plu = str((params.get("plu") or [""])[0]).strip()
+    if not plu:
+        raise ValueError("Не указан PLU")
+    conn = connect_db()
+    try:
+        available = {r[1] for r in conn.execute("PRAGMA table_info(products)")}
+        columns = [c for c in ("chain", "sap_code", "plu", "name", "current_price",
+                               "regular_price", "discount_pct", "categories",
+                               "product_url", "last_seen_at") if c in available]
+        rows = conn.execute(
+            f"SELECT {','.join(columns)} FROM products WHERE plu=? ORDER BY chain,sap_code",
+            (plu,),
+        ).fetchall()
+        return {"plu": plu, "items": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
 def request_chain(params: dict) -> str:
     """Сеть из query/body; по умолчанию — сеть V14."""
     value = params.get("chain") if isinstance(params, dict) else None
@@ -1702,7 +1734,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(PHOTO_DIR / name)
             if path == "/files/excel": return self._file(BASE_DIR / "pyaterochka_catalog_v9.xlsx", attachment=True)
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
-            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "14.0"})
+            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "15.0-dev", "chains": list(STORES)})
+            if path == "/api/stores": return self._json(200, stores_data())
+            if path == "/api/compare": return self._json(200, compare_data(params))
             if path == "/api/dashboard": return self._json(200, dashboard_data(params))
             if path == "/api/analytics": return self._json(200, analytics_data(params))
             if path == "/api/products": return self._json(200, products_data(params))

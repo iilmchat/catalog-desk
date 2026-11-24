@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#132c20">
-  <title>Пятёрочка — Catalog Desk V14.0</title>
+  <title>Catalog Desk V15.0</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="brand-mark">5</div><div><strong>Пятёрочка</strong><span>CATALOG DESK <b>V14.0</b></span></div></div>
-    <div class="store-switch"><span class="live-dot"></span><div><small>АКТИВНЫЙ МАГАЗИН</small><strong>SAP 35XY</strong></div><span class="store-check">✓</span></div>
+    <div class="brand"><div class="brand-mark" id="brand-mark">5</div><div><strong id="brand-title">Пятёрочка</strong><span>CATALOG DESK <b>V15.0</b></span></div></div>
+    <div class="store-switch"><span class="live-dot"></span><div><small>АКТИВНАЯ СЕТЬ</small><select id="store-chain" aria-label="Выбрать сеть"><option value="5ka">Пятёрочка</option><option value="perekrestok">Перекрёсток</option></select><small id="store-sap" class="store-sap">SAP 35XY</small></div><span class="store-check">✓</span></div>
     <nav class="nav">
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <button class="nav-link active" data-view="dashboard"><span class="nav-ico">◫</span>Обзор</button>
@@ -29,12 +29,12 @@
   <main class="main-area">
     <header class="topbar">
       <button id="mobile-menu" class="mobile-menu" aria-label="Открыть меню">☰</button>
-      <div class="breadcrumbs"><span>Пятёрочка</span><i>/</i><strong id="page-heading">Обзор</strong></div>
+      <div class="breadcrumbs"><span id="crumb-store">Пятёрочка</span><i>/</i><strong id="page-heading">Обзор</strong></div>
       <div class="top-actions"><span class="connection"><i></i>Локальная база подключена</span><span class="today-chip" id="today-chip">Сегодня</span><button id="refresh-button" class="icon-button" title="Обновить данные">↻</button><button class="primary-button" data-goto="collection">＋ Добавить выгрузку</button></div>
     </header>
 
     <section class="view active" id="view-dashboard">
-      <div class="page-intro"><div><div class="eyebrow green">ПАНЕЛЬ УПРАВЛЕНИЯ · SAP 35XY</div><h1>Добро пожаловать</h1><p>Сводка ассортимента, цен, скидок и полноты выгрузок.</p></div><div class="intro-actions"><span class="sync-badge"><i></i>База обновлена <b id="last-sync">—</b></span><button class="outline-button" data-goto="analytics">Открыть аналитику ↗</button></div></div>
+      <div class="page-intro"><div><div class="eyebrow green">ПАНЕЛЬ УПРАВЛЕНИЯ</div><h1>Добро пожаловать</h1><p>Сводка ассортимента, цен, скидок и полноты выгрузок.</p></div><div class="intro-actions"><span class="sync-badge"><i></i>База обновлена <b id="last-sync">—</b></span><button class="outline-button" data-goto="analytics">Открыть аналитику ↗</button></div></div>
       <div class="stat-grid" id="stat-grid">
         <div class="stat-card stat-primary"><div class="stat-label">ТОВАРОВ В БАЗЕ</div><div class="stat-value">—</div><div class="stat-foot">Уникальные SAP + PLU</div><div class="stat-icon">▦</div></div>
         <div class="stat-card"><div class="stat-label">СЕЙЧАС СО СКИДКОЙ</div><div class="stat-value">—</div><div class="stat-foot">По последнему наблюдению</div><div class="stat-icon">%</div></div>
@@ -51,7 +51,7 @@
     </section>
 
     <section class="view" id="view-products">
-      <div class="page-intro compact"><div><div class="eyebrow green">КАТАЛОГ SAP 35XY</div><h1>Товары</h1><p>Поиск по названию, PLU, категории и наличию скидки.</p></div><div class="intro-actions"><button class="outline-button" id="clear-filters">Сбросить фильтры</button></div></div>
+      <div class="page-intro compact"><div><div class="eyebrow green">КАТАЛОГ</div><h1>Товары</h1><p>Поиск по названию, PLU, категории и наличию скидки.</p></div><div class="intro-actions"><button class="outline-button" id="clear-filters">Сбросить фильтры</button></div></div>
       <div class="toolbar panel"><label class="search-box"><span>⌕</span><input id="search-input" type="search" placeholder="Найти товар, бренд или PLU…" autocomplete="off"></label><select id="category-filter"><option value="">Все категории</option></select><select id="promo-filter"><option value="all">Любая цена</option><option value="yes">Только со скидкой</option><option value="no">Без скидки</option></select><select id="sort-filter"><option value="name">По названию</option><option value="price_asc">Сначала дешевле</option><option value="price_desc">Сначала дороже</option><option value="discount">По размеру скидки</option><option value="recent">Недавно обновлённые</option><option value="first">Недавно добавленные</option></select></div>
       <div class="results-line"><strong id="products-total">0 товаров</strong><span id="products-hint">Загрузка каталога</span></div>
       <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА</th><th>ОБЫЧНАЯ</th><th>СКИДКА</th><th>ДОПЫ</th><th>НАБЛЮДЕНИЙ</th><th></th></tr></thead><tbody id="products-body"><tr><td colspan="8" class="empty-cell">Загружаем товары…</td></tr></tbody></table></div><div class="pagination"><span id="page-info">Страница 1</span><div><button class="outline-button small" id="prev-page">← Назад</button><button class="outline-button small" id="next-page">Вперёд →</button></div></div></div>
@@ -62,6 +62,7 @@
       <div class="analytics-kpis" id="analytics-kpis"></div>
       <div class="analytics-grid"><section class="panel analytics-chart-panel"><div class="panel-head"><div><div class="eyebrow">СРЕДНЯЯ ЦЕНА</div><h2>Динамика каталога</h2></div><span class="chart-legend"><i></i>Средняя цена, ₽</span></div><div id="analytics-price-chart" class="big-chart"><div class="empty-inline">Накопление истории начнётся после следующих снимков.</div></div><p class="chart-footnote">Среднее рассчитывается по товарам, наблюдавшимся в соответствующую дату. Состав выборки может меняться.</p></section><section class="panel analytics-chart-panel"><div class="panel-head"><div><div class="eyebrow">СРЕДНЯЯ СКИДКА</div><h2>Динамика скидок</h2></div><span class="chart-legend discount-legend"><i></i>Скидка, %</span></div><div id="analytics-discount-chart" class="big-chart"></div><p class="chart-footnote">Учитываются только товары, у которых в снимке была зафиксирована скидка.</p></section></div>
       <div class="analytics-grid lower"><section class="panel ranking-panel"><div class="panel-head"><div><div class="eyebrow">РОСТ СТОИМОСТИ</div><h2>Сильнее всего подорожали</h2></div></div><div id="biggest-up" class="ranking-list"><div class="empty-inline">Пока нет сравнений.</div></div></section><section class="panel ranking-panel"><div class="panel-head"><div><div class="eyebrow">СНИЖЕНИЕ СТОИМОСТИ</div><h2>Сильнее всего подешевели</h2></div></div><div id="biggest-down" class="ranking-list"><div class="empty-inline">Пока нет сравнений.</div></div></section><section class="panel ranking-panel discount-ranking"><div class="panel-head"><div><div class="eyebrow">ВЫГОДНЫЕ ПРЕДЛОЖЕНИЯ</div><h2>Наибольшая скидка</h2></div></div><div id="best-discounts" class="ranking-list"><div class="empty-inline">Загрузка…</div></div></section></div>
+      <section class="panel compare-panel"><div class="panel-head"><div><div class="eyebrow">СРАВНЕНИЕ СЕТЕЙ</div><h2>Один PLU в разных магазинах</h2></div><div class="intro-actions"><input id="compare-plu" class="small-select" placeholder="PLU, например 24139" inputmode="numeric"><button class="outline-button" id="compare-run">Сравнить</button></div></div><div id="compare-result" class="ranking-list"><div class="empty-inline">Введите PLU и нажмите «Сравнить».</div></div></section>
     </section>
 
     <section class="view" id="view-changes">
@@ -76,7 +77,7 @@
     </section>
 
     <section class="view" id="view-enrichment">
-      <div class="page-intro compact"><div><div class="eyebrow green">ПОШАГОВАЯ ДОЗАГРУЗКА КАТАЛОГА · SAP 35XY</div><h1>Массовое обогащение</h1><p>Не нужно вручную открывать каждую карточку: после одной установки userscript сам последовательно переходит по товарам пакетами до 200 штук. При проверке сайта останавливается.</p></div><div class="intro-actions"><button class="outline-button" id="mass-refresh">Обновить очередь</button><button class="primary-button" id="mass-open-next">Открыть следующую карточку ↗</button></div></div>
+      <div class="page-intro compact"><div><div class="eyebrow green">ПОШАГОВАЯ ДОЗАГРУЗКА КАТАЛОГА</div><h1>Массовое обогащение</h1><p>Не нужно вручную открывать каждую карточку: после одной установки userscript сам последовательно переходит по товарам пакетами до 200 штук. При проверке сайта останавливается.</p></div><div class="intro-actions"><button class="outline-button" id="mass-refresh">Обновить очередь</button><button class="primary-button" id="mass-open-next">Открыть следующую карточку ↗</button></div></div>
       <section class="panel batch-panel-v14">
         <div class="panel-head"><div><div class="eyebrow">ПАКЕТНЫЙ РЕЖИМ V14</div><h2>Обработать товары автоматически по очереди</h2><p class="panel-subtitle">Один запуск обрабатывает до 200 карточек подряд. Для 2 494 товаров это примерно 13 пакетов, а не 2 494 ручных клика. Пауза между страницами настраивается. Читается только видимый DOM; при CAPTCHA пакет останавливается.</p></div><span class="step-badge">AUTO</span></div>
         <div class="batch-controls-v14">
@@ -122,7 +123,7 @@
       <section class="panel exports-panel-full"><div class="panel-head"><div><div class="eyebrow">ЖУРНАЛ</div><h2>Последние выгрузки</h2></div><span class="subtle-count" id="exports-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>ФАЙЛ</th><th>КАТЕГОРИЯ</th><th>СТР.</th><th>ТОВАРОВ</th><th>НАБЛЮДЕНИЕ</th><th>ИМПОРТ</th></tr></thead><tbody id="exports-body"><tr><td colspan="6" class="empty-cell">Загружаем…</td></tr></tbody></table></div></section>
     </section>
 
-    <footer class="app-footer"><span>Pyaterochka Catalog Desk V14.0</span><span>Python · Pure JavaScript · SQLite · SAP 35XY</span></footer>
+    <footer class="app-footer"><span>Catalog Desk V15.0</span><span>Python · Pure JavaScript · SQLite · <span id="footer-store">Пятёрочка · SAP 35XY</span></span></footer>
   </main>
 </div>
 
