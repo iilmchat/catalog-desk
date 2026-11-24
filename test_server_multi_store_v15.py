@@ -40,15 +40,18 @@ class MultiStoreBatchTests(unittest.TestCase):
         );
         CREATE TABLE products(
             sap_code TEXT NOT NULL, plu TEXT NOT NULL, name TEXT, categories TEXT,
-            product_url TEXT, current_price REAL, image_url TEXT, image_file TEXT,
+            product_url TEXT, current_price REAL, regular_price REAL, promo_price REAL,
+            discount_pct REAL, promo_label TEXT, image_url TEXT, image_file TEXT,
             first_seen_at TEXT, last_seen_at TEXT,
             first_imported_at TEXT, last_imported_at TEXT,
             PRIMARY KEY(sap_code,plu)
         );
         CREATE TABLE product_categories(sap_code TEXT, plu TEXT, category TEXT);
         CREATE TABLE price_history(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, sap_code TEXT, plu TEXT,
-            current_price REAL, captured_at TEXT, imported_at TEXT, source_hash TEXT
+            id INTEGER PRIMARY KEY AUTOINCREMENT, chain TEXT DEFAULT '5ka', sap_code TEXT, plu TEXT,
+            current_price REAL, regular_price REAL, promo_price REAL, discount_pct REAL,
+            promo_label TEXT, category TEXT, product_name TEXT, image_url TEXT, product_url TEXT,
+            captured_at TEXT, imported_at TEXT, source_hash TEXT, file_name TEXT, source_url TEXT
         );
         INSERT INTO products(sap_code,plu,name,categories,product_url,current_price,image_url,first_seen_at,last_seen_at,first_imported_at,last_imported_at)
         VALUES
@@ -152,6 +155,29 @@ class MultiStoreBatchTests(unittest.TestCase):
         table = mod.compare_table_data({"chain": ["perekrestok"], "plu": ["100001", "24139"]})
         self.assertEqual(len(table["items"]), 1)
         self.assertEqual(table["best"]["current_price"], 120)
+
+    def test_automation_journal_and_api_v1(self):
+        mod.record_operation_error("batch", "тестовая ошибка", chain="perekrestok")
+        errors = mod.errors_data({"chain": ["perekrestok"]})
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]["message"], "тестовая ошибка")
+        self.assertEqual(mod.retry_error({"id": errors[0]["id"]})["resolved"], True)
+        self.assertTrue(mod.errors_data({"chain": ["perekrestok"]})[0]["resolved"])
+
+        scheduled = mod.set_schedule({"chain": ["perekrestok"], "run_date": ["2026-11-25"]})
+        self.assertEqual(scheduled["status"], "pending")
+        self.assertEqual(mod.schedule_data()["runs"][0]["chain"], "perekrestok")
+
+        backup = mod.backup_now()
+        self.assertTrue((Path(self.tmp.name) / backup["file"]).exists())
+
+        self.assertEqual(mod.api_v1("/api/v1/stores", {})["success"], True)
+        products = mod.api_v1("/api/v1/products", {"chain": ["perekrestok"]})
+        self.assertEqual(products["data"]["total"], 1)
+        self.assertEqual(
+            mod.api_v1("/api/v1/products/perekrestok/100001", {})["data"]["product"]["plu"],
+            "100001",
+        )
 
     def test_stores_registry_and_cross_chain_compare(self):
         stores = mod.stores_data()

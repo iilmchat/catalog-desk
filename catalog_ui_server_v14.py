@@ -283,6 +283,129 @@ def compare_table_data(params: dict) -> dict:
     return {"items": items, "best": best}
 
 
+def record_operation_error(source: str, message: str, chain: str = DEFAULT_CHAIN) -> None:
+    """Записать ошибку операции в журнал."""
+    try:
+        conn = connect_db()
+        try:
+            conn.execute(
+                "INSERT INTO operation_errors(chain,source,message,created_at) VALUES(?,?,?,?)",
+                (normalize_chain(chain), str(source)[:120], str(message)[:800], now_iso()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def errors_data(params: dict) -> list[dict]:
+    chain = request_chain(params)
+    conn = connect_db()
+    try:
+        rows = conn.execute("""
+            SELECT id,chain,source,message,created_at,resolved,resolved_at
+            FROM operation_errors WHERE chain=? ORDER BY created_at DESC LIMIT 200
+        """, (chain,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def retry_error(data: dict) -> dict:
+    error_id = int(data.get("id") or 0)
+    if not error_id:
+        raise ValueError("Не указан ID ошибки")
+    conn = connect_db()
+    try:
+        conn.execute(
+            "UPDATE operation_errors SET resolved=1,resolved_at=? WHERE id=?", (now_iso(), error_id)
+        )
+        conn.commit()
+        return {"id": error_id, "resolved": True}
+    finally:
+        conn.close()
+
+
+def schedule_data() -> dict:
+    conn = connect_db()
+    try:
+        rows = conn.execute("""
+            SELECT chain,run_date,status,created_at,finished_at FROM daily_runs
+            ORDER BY run_date DESC, chain
+        """).fetchall()
+        return {"chains": list(STORES), "runs": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+def set_schedule(data: dict) -> dict:
+    chain = request_chain(data)
+    run_date = str(data.get("run_date") or now_iso()[:10]).strip()[:10]
+    conn = connect_db()
+    try:
+        conn.execute(
+            """INSERT INTO daily_runs(chain,run_date,status,created_at) VALUES(?,?,'pending',?)
+               ON CONFLICT(chain,run_date) DO UPDATE SET status=excluded.status""",
+            (chain, run_date, now_iso()),
+        )
+        conn.commit()
+        return {"chain": chain, "run_date": run_date, "status": "pending"}
+    finally:
+        conn.close()
+
+
+def backup_now() -> dict:
+    if not DB_PATH.exists():
+        raise FileNotFoundError(f"Не найдена {DB_PATH.name}")
+    dest = DB_PATH.with_name(f"{DB_PATH.stem}_backup_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}{DB_PATH.suffix}")
+    src = sqlite3.connect(str(DB_PATH), timeout=30)
+    dst = sqlite3.connect(str(dest))
+    try:
+        src.backup(dst)
+    finally:
+        dst.close(); src.close()
+    return {"file": dest.name, "created_at": now_iso()}
+
+
+def api_v1(path: str, params: dict) -> dict:
+    """Версионированный локальный API; chain обязателен для товарных роутов."""
+    if path == "/api/v1/stores":
+        return {"success": True, "data": stores_data()}
+    if path == "/api/v1/products":
+        data = products_data(params)
+        return {"success": True, "data": {"items": data["items"], "total": data["total"],
+                                          "page": data["page"], "chain": request_chain(params)}}
+    if path == "/api/v1/prices":
+        chain = request_chain(params)
+        plu = str((params.get("plu") or [""])[0])
+        if not plu:
+            raise ValueError("Не указан PLU")
+        conn = connect_db()
+        try:
+            rows = conn.execute("""
+                SELECT captured_at,imported_at,current_price,regular_price,discount_pct
+                FROM price_history WHERE chain=? AND plu=? ORDER BY captured_at,imported_at,id
+            """, (chain, plu)).fetchall()
+            return {"success": True, "data": {"chain": chain, "plu": plu,
+                                              "items": [dict(r) for r in rows]}}
+        finally:
+            conn.close()
+    if path.startswith("/api/v1/products/"):
+        parts = path.split("/")
+        if len(parts) < 6:
+            raise ValueError("Нужно /api/v1/products/{chain}/{plu}")
+        params = dict(params)
+        params["chain"] = [parts[4]]
+        params["plu"] = [parts[5]]
+        return {"success": True, "data": product_detail(params)}
+    if path == "/api/v1/compare":
+        return {"success": True, "data": compare_data(params)}
+    if path == "/api/v1/imports":
+        return {"success": True, "data": {"runs": schedule_data()["runs"], "job": dict(_JOB)}}
+    raise KeyError("Неизвестный роут API v1")
+
+
 def request_chain(params: dict) -> str:
     """Сеть из query/body; по умолчанию — сеть V14."""
     value = params.get("chain") if isinstance(params, dict) else None
@@ -599,6 +722,23 @@ def ensure_ui_columns() -> None:
         CREATE TABLE IF NOT EXISTS catalog_ui_meta (
             meta_key TEXT PRIMARY KEY,
             meta_value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS operation_errors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chain TEXT NOT NULL DEFAULT '5ka',
+            source TEXT,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            resolved INTEGER NOT NULL DEFAULT 0,
+            resolved_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS daily_runs (
+            chain TEXT NOT NULL,
+            run_date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            finished_at TEXT,
+            PRIMARY KEY(chain, run_date)
         );
         INSERT OR IGNORE INTO enrichment_batch_state(id,active,max_items,delay_seconds,processed_count,updated_at)
         VALUES(1,0,25,15,0,datetime('now'));
@@ -1286,6 +1426,8 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                 errors.append(f"{path.name}: {exc}")
     finally:
         conn.close()
+    for message in errors:
+        record_operation_error("details_import", message)
     return imported_files, imported_products, skipped, errors
 
 
@@ -2019,6 +2161,15 @@ def run_import(download_photos: bool = False, chain: str = DEFAULT_CHAIN) -> Non
         return_code = proc.wait()
         out = "".join(lines)
         persist_page_metadata()
+        conn = connect_db()
+        try:
+            conn.execute("""
+                UPDATE daily_runs SET status=?,finished_at=?
+                WHERE chain=? AND run_date=? AND status='pending'
+            """, ("done" if return_code == 0 else "failed", now_iso(), normalize_chain(chain), now_iso()[:10]))
+            conn.commit()
+        finally:
+            conn.close()
         with _JOB_LOCK:
             if _JOB["job_id"] == job_id:
                 _JOB.update({"running": False, "finished_at": now_iso(), "return_code": return_code,
@@ -2087,6 +2238,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/search": return self._json(200, search_products(params))
             if path == "/api/ingredients": return self._json(200, ingredients_data(params))
             if path == "/api/compare-table": return self._json(200, compare_table_data(params))
+            if path.startswith("/api/v1/"): return self._json(200, api_v1(path, params))
+            if path == "/api/errors": return self._json(200, errors_data(params))
+            if path == "/api/schedule": return self._json(200, schedule_data())
             if path == "/api/dashboard": return self._json(200, dashboard_data(params))
             if path == "/api/analytics": return self._json(200, analytics_data(params))
             if path == "/api/products": return self._json(200, products_data(params))
@@ -2150,6 +2304,12 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         try:
             data = self._body_json()
+            if parsed.path == "/api/errors/retry":
+                return self._json(200, retry_error(data))
+            if parsed.path == "/api/schedule":
+                return self._json(200, set_schedule(data))
+            if parsed.path == "/api/backup":
+                return self._json(200, backup_now())
             if parsed.path == "/api/upload":
                 return self._json(200, upload_payload(data))
             if parsed.path == "/api/favorite":
