@@ -33,6 +33,7 @@ photospr/
 5ka_*.json
 pyaterochka_*_report.json
 pyaterochka_import_report.json
+catalog_*_v10_report.json
 
 # Готовые отчёты и экспорты (создаются импортёром)
 *.xlsx

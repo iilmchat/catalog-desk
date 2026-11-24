@@ -80,8 +80,9 @@ pip install -r requirements_v14.txt
 ### 4.2. Импорт из командной строки
 
 ```powershell
-python import_5ka_catalog_v9.py --no-photos
-python import_5ka_catalog_v9.py --photos-only
+python import_5ka_catalog_v9.py --chain 5ka --no-photos
+python import_5ka_catalog_v9.py --chain 5ka --photos-only
+python import_5ka_catalog_v9.py --chain perekrestok --input-dir C:\path\to\exports --no-photos
 ```
 
 ### 4.3. Что попадает в базу

@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Накопительный импортёр каталога 5ka.ru: SQLite + Excel + история наблюдений (v9).
+"""Накопительный импортёр каталога: SQLite + Excel + история наблюдений (v10).
 
 Работает только с файлами, которые пользователь экспортировал из видимой страницы
-5ka.ru. Не открывает сайт, не использует cookies и не обращается к API каталога.
+магазина. Не открывает сайт, не использует cookies и не обращается к API каталога.
 
 Запуск из папки проекта:
-    python import_5ka_catalog_v9.py
-    python import_5ka_catalog_v9.py --no-photos
-    python import_5ka_catalog_v9.py --expected-sap 35XY
+    python import_5ka_catalog_v9.py --chain 5ka
+    python import_5ka_catalog_v9.py --chain perekrestok --input-dir <папка JSON>
+    python import_5ka_catalog_v9.py --chain 5ka --no-photos
 
 Новые JSON-файлы помещайте в 5ka_exports/. V9 мигрирует копию V8 SQLite, оригинал оставляет нетронутым. Повторный запуск безопасен:
 файл с уже обработанным SHA-256 не добавляется в историю второй раз.
@@ -27,6 +27,14 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urlparse
 
+from catalog_config import (
+    DEFAULT_CHAIN,
+    chain_from_source,
+    chain_from_url,
+    get_store,
+    normalize_chain,
+    STORES,
+)
 from catalog_migrations import migrate_v9_to_v10
 
 import pandas as pd
@@ -48,20 +56,20 @@ REPORT_JSON = BASE_DIR / "pyaterochka_catalog_v9_report.json"
 PHOTO_DIR = BASE_DIR / "photos5ka"
 
 PRODUCT_COLUMNS = [
-    "SAP магазина", "PLU", "название", "цена сейчас, ₽", "обычная цена, ₽",
+    "Сеть", "SAP магазина", "PLU", "название", "цена сейчас, ₽", "обычная цена, ₽",
     "цена по акции, ₽", "скидка, %", "маркер акции", "категории",
     "фото URL", "фото файл", "карточка товара",
     "дата первого появления (UTC)", "дата последнего наблюдения (UTC)",
     "дата первого импорта (UTC)", "дата последнего импорта (UTC)", "наблюдений цены",
 ]
 HISTORY_COLUMNS = [
-    "дата наблюдения (UTC)", "дата импорта (UTC)", "SAP магазина", "PLU",
+    "Сеть", "дата наблюдения (UTC)", "дата импорта (UTC)", "SAP магазина", "PLU",
     "название на момент выгрузки", "категория", "цена сейчас, ₽", "обычная цена, ₽",
     "цена по акции, ₽", "скидка, %", "маркер акции", "фото URL на момент выгрузки",
     "ссылка карточки на момент выгрузки", "страница каталога", "файл выгрузки",
 ]
 CHANGE_COLUMNS = [
-    "дата предыдущего наблюдения (UTC)", "дата изменения (UTC)", "дата импорта (UTC)",
+    "Сеть", "дата предыдущего наблюдения (UTC)", "дата изменения (UTC)", "дата импорта (UTC)",
     "SAP магазина", "PLU", "название", "категория",
     "предыдущая цена, ₽", "новая цена, ₽", "изменение, ₽", "изменение, %",
     "предыдущая обычная цена, ₽", "новая обычная цена, ₽",
@@ -69,27 +77,27 @@ CHANGE_COLUMNS = [
     "предыдущая скидка, %", "новая скидка, %", "что изменилось",
 ]
 EVENT_COLUMNS = [
-    "тип события", "дата наблюдения (UTC)", "дата импорта (UTC)",
+    "Сеть", "тип события", "дата наблюдения (UTC)", "дата импорта (UTC)",
     "предыдущее наблюдение (UTC)", "SAP магазина", "PLU", "название",
     "категория", "изменения", "цена сейчас, ₽", "обычная цена, ₽",
     "цена по акции, ₽", "скидка, %", "фото URL",
 ]
 PROGRESS_COLUMNS = [
-    "SAP магазина", "категория", "страниц выгружено", "номера страниц",
+    "Сеть", "SAP магазина", "категория", "страниц выгружено", "номера страниц",
     "файлов выгрузки", "уникальных PLU", "первая выгрузка (UTC)",
     "последняя выгрузка (UTC)", "цены", "фото URL",
 ]
 EXPORT_COLUMNS = [
-    "дата наблюдения (UTC)", "дата импорта (UTC)", "SAP магазина", "категория", "страница",
+    "Сеть", "дата наблюдения (UTC)", "дата импорта (UTC)", "SAP магазина", "категория", "страница",
     "товаров в файле", "имя файла", "исходная страница", "SHA-256",
 ]
 DETAIL_COLUMNS = [
-    "SAP магазина", "PLU", "название", "описание", "состав", "пищевая ценность JSON",
+    "Сеть", "SAP магазина", "PLU", "название", "описание", "состав", "пищевая ценность JSON",
     "характеристики JSON", "полный текст карточки", "ссылка товара", "фото URL",
     "дата первого импорта доп. сведений (UTC)", "дата последнего импорта доп. сведений (UTC)",
     "дата наблюдения доп. сведений (UTC)",
 ]
-IMAGE_COLUMNS = ["SAP магазина", "PLU", "порядок фото", "URL фото", "локальный файл", "источник", "первое появление фото (UTC)", "последнее появление фото (UTC)"]
+IMAGE_COLUMNS = ["Сеть", "SAP магазина", "PLU", "порядок фото", "URL фото", "локальный файл", "источник", "первое появление фото (UTC)", "последнее появление фото (UTC)"]
 
 PRICE_RE = re.compile(
     r"(?<!\d)(\d+(?:[\u00a0\u202f ]\d{3})*(?:[.,]\d{2}|[\u00a0\u202f ]\d{2})?)\s*₽",
@@ -261,14 +269,32 @@ def walk_products(obj: Any) -> Iterable[dict[str, Any]]:
             yield from walk_products(value)
 
 
+def detect_chain(payload: dict[str, Any] | None, default: str = DEFAULT_CHAIN) -> str:
+    """Определить сеть выгрузки: явное поле → маркер source → домен URL."""
+    if not isinstance(payload, dict):
+        return default
+    if payload.get("chain"):
+        return normalize_chain(payload["chain"])
+    # Домен надёжнее маркера: старые выгрузки Перекрёстка несут source 5ka.ru-...
+    url = str(payload.get("source_url") or "").lower()
+    for chain, cfg in STORES.items():
+        if any(domain in url for domain in cfg["match_domains"]):
+            return chain
+    inferred = chain_from_source(payload.get("source"))
+    if inferred:
+        return inferred
+    return default
+
+
 def load_json_rows(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    if isinstance(payload, dict) and payload.get("source") == "5ka.ru-visible-category-links":
+    chain = detect_chain(payload)
+    if isinstance(payload, dict) and str(payload.get("source") or "").endswith("visible-category-links"):
         return [], {"is_checklist": True}
     rows: list[dict[str, Any]] = []
     if isinstance(payload, dict) and isinstance(payload.get("products"), list):
         products = payload["products"]
-        is_visible = payload.get("source") == "5ka.ru-visible-page-export" or any(
+        is_visible = str(payload.get("source") or "").endswith("visible-page-export") or any(
             isinstance(p, dict) and "raw_text" in p for p in products
         )
         if is_visible:
@@ -290,7 +316,10 @@ def load_json_rows(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
             row = row_from_api_product(product, path.stem, None)
             if row.get("PLU"):
                 rows.append(row)
+    for row in rows:
+        row["Сеть"] = chain
     meta = {
+        "chain": chain,
         "category": payload.get("category") if isinstance(payload, dict) else path.stem,
         "source_url": payload.get("source_url") if isinstance(payload, dict) else None,
         "sap_code": ((payload.get("store") or {}).get("sap_code") if isinstance(payload, dict) else None),
@@ -321,7 +350,7 @@ def load_checkpoint_rows(path: Path) -> list[dict[str, Any]]:
             regular = to_price(item.get("обычная цена, ₽"))
             pct = round((regular - current) / regular * 100, 1) if regular and current is not None and current < regular else None
             rows.append({
-                "SAP магазина": "35XY", "PLU": str(plu), "название": item.get("название") or item.get("name"),
+                "Сеть": DEFAULT_CHAIN, "SAP магазина": "35XY", "PLU": str(plu), "название": item.get("название") or item.get("name"),
                 "цена сейчас, ₽": current, "обычная цена, ₽": regular,
                 "цена по акции, ₽": current if pct is not None else None, "скидка, %": pct,
                 "маркер акции": None, "категории": item.get("категория") or category,
@@ -491,28 +520,31 @@ class CatalogDB:
         captured = normalize_timestamp(meta.get("captured_at"), utc_now())
         imported = utc_now()  # actual time this file is inserted into our local database
         sap_from_meta = meta.get("sap_code")
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        chain = normalize_chain(meta.get("chain") or DEFAULT_CHAIN)
+        unique_rows: dict[tuple[str, str, str], dict[str, Any]] = {}
         for row in rows:
             plu = str(row.get("PLU") or "").strip()
             if not plu:
                 continue
             sap = str(first_present(row.get("SAP магазина"), sap_from_meta, "НЕ УКАЗАН")).strip()
+            row_chain = normalize_chain(row.get("Сеть") or chain)
             normalized = dict(row)
             normalized["PLU"] = plu
+            normalized["Сеть"] = row_chain
             normalized["SAP магазина"] = sap
             normalized["время получения"] = normalize_timestamp(row.get("время получения"), captured)
-            unique_rows[(sap, plu)] = normalized
+            unique_rows[(row_chain, sap, plu)] = normalized
 
         self.conn.execute("BEGIN")
         try:
             self.conn.execute(
-                """INSERT INTO exports(source_hash,file_name,category,source_url,sap_code,captured_at,imported_at,product_rows,unique_products,page_number)
-                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
-                (source_hash, file_name, meta.get("category"), meta.get("source_url"), sap_from_meta,
+                """INSERT INTO exports(chain,source_hash,file_name,category,source_url,sap_code,captured_at,imported_at,product_rows,unique_products,page_number)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (chain, source_hash, file_name, meta.get("category"), meta.get("source_url"), sap_from_meta,
                  captured, imported, len(rows), len(unique_rows), page_number(meta.get("source_url"))),
             )
 
-            for (sap, plu), row in unique_rows.items():
+            for (row_chain, sap, plu), row in unique_rows.items():
                 seen_at = normalize_timestamp(row.get("время получения"), captured)
                 category = str(row.get("категории") or meta.get("category") or "не указана").strip()
                 current = row.get("цена сейчас, ₽")
@@ -521,17 +553,17 @@ class CatalogDB:
                 discount_pct = row.get("скидка, %")
                 existing = self.conn.execute(
                     """SELECT first_seen_at,last_seen_at,first_imported_at,last_imported_at
-                       FROM products WHERE sap_code=? AND plu=?""", (sap, plu)
+                       FROM products WHERE chain=? AND sap_code=? AND plu=?""", (row_chain, sap, plu)
                 ).fetchone()
 
                 if existing is None:
                     self.conn.execute(
                         """INSERT INTO products(
-                            sap_code,plu,name,current_price,regular_price,promo_price,discount_pct,promo_label,
+                            chain,sap_code,plu,name,current_price,regular_price,promo_price,discount_pct,promo_label,
                             categories,image_url,image_file,product_url,first_seen_at,last_seen_at,last_source_hash,
                             first_imported_at,last_imported_at
-                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (sap, plu, row.get("название"), current, regular, promo, discount_pct, row.get("маркер акции"),
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (row_chain, sap, plu, row.get("название"), current, regular, promo, discount_pct, row.get("маркер акции"),
                          category, row.get("фото URL"), None, row.get("карточка товара"), seen_at, seen_at,
                          source_hash, imported, imported),
                     )
@@ -549,40 +581,44 @@ class CatalogDB:
                                 image_url=COALESCE(?,image_url), product_url=COALESCE(?,product_url),
                                 first_seen_at=?,last_seen_at=?,last_source_hash=?,
                                 first_imported_at=?,last_imported_at=?
-                                WHERE sap_code=? AND plu=?""",
+                                WHERE chain=? AND sap_code=? AND plu=?""",
                             (row.get("название"), current, regular, promo, discount_pct, row.get("маркер акции"),
                              row.get("фото URL"), row.get("карточка товара"), first_seen, last_seen, source_hash,
-                             first_imported, last_imported, sap, plu),
+                             first_imported, last_imported, row_chain, sap, plu),
                         )
                     else:
                         self.conn.execute(
                             """UPDATE products SET first_seen_at=?,last_seen_at=?,
-                               first_imported_at=?,last_imported_at=? WHERE sap_code=? AND plu=?""",
-                            (first_seen, last_seen, first_imported, last_imported, sap, plu),
+                               first_imported_at=?,last_imported_at=? WHERE chain=? AND sap_code=? AND plu=?""",
+                            (first_seen, last_seen, first_imported, last_imported, row_chain, sap, plu),
                         )
 
                 self.conn.execute(
-                    """INSERT INTO product_categories(sap_code,plu,category,first_seen_at,last_seen_at) VALUES(?,?,?,?,?)
+                    """INSERT INTO product_categories(chain,sap_code,plu,category,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?)
                        ON CONFLICT(chain,sap_code,plu,category) DO UPDATE SET
                        last_seen_at=MAX(last_seen_at,excluded.last_seen_at),
                        first_seen_at=MIN(first_seen_at,excluded.first_seen_at)""",
-                    (sap, plu, category, seen_at, seen_at),
+                    (row_chain, sap, plu, category, seen_at, seen_at),
                 )
                 self.conn.execute(
                     """INSERT OR IGNORE INTO price_history(
-                        source_hash,sap_code,plu,category,captured_at,current_price,regular_price,promo_price,
+                        chain,source_hash,sap_code,plu,category,captured_at,current_price,regular_price,promo_price,
                         discount_pct,promo_label,raw_text,source_url,file_name,imported_at,product_name,image_url,product_url
-                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (source_hash, sap, plu, category, seen_at, current, regular, promo, discount_pct,
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (row_chain, source_hash, sap, plu, category, seen_at, current, regular, promo, discount_pct,
                      row.get("маркер акции"), row.get("сырой текст карточки"), meta.get("source_url"),
                      file_name, imported, row.get("название"), row.get("фото URL"), row.get("карточка товара")),
                 )
 
-            for sap, plu in unique_rows:
+            for row_chain, sap, plu in unique_rows:
                 cats = [r[0] for r in self.conn.execute(
-                    "SELECT category FROM product_categories WHERE sap_code=? AND plu=? ORDER BY category", (sap, plu)
+                    "SELECT category FROM product_categories WHERE chain=? AND sap_code=? AND plu=? ORDER BY category",
+                    (row_chain, sap, plu)
                 ).fetchall()]
-                self.conn.execute("UPDATE products SET categories=? WHERE sap_code=? AND plu=?", (" | ".join(cats), sap, plu))
+                self.conn.execute(
+                    "UPDATE products SET categories=? WHERE chain=? AND sap_code=? AND plu=?",
+                    (" | ".join(cats), row_chain, sap, plu),
+                )
 
             self.conn.commit()
         except Exception:
@@ -590,17 +626,21 @@ class CatalogDB:
             raise
         return len(rows), len(unique_rows)
 
-    def update_image(self, sap: str, plu: str, image_file: str) -> None:
-        self.conn.execute("UPDATE products SET image_file=? WHERE sap_code=? AND plu=?", (image_file, sap, plu))
+    def update_image(self, chain: str, sap: str, plu: str, image_file: str) -> None:
+        self.conn.execute(
+            "UPDATE products SET image_file=? WHERE chain=? AND sap_code=? AND plu=?",
+            (image_file, normalize_chain(chain), sap, plu),
+        )
         self.conn.commit()
 
     def products(self) -> list[dict[str, Any]]:
         rows = self.conn.execute("""
-            SELECT p.*, (SELECT COUNT(*) FROM price_history h WHERE h.sap_code=p.sap_code AND h.plu=p.plu) AS observation_count
-            FROM products p ORDER BY p.sap_code,p.categories,p.name
+            SELECT p.*, (SELECT COUNT(*) FROM price_history h
+                         WHERE h.chain=p.chain AND h.sap_code=p.sap_code AND h.plu=p.plu) AS observation_count
+            FROM products p ORDER BY p.chain,p.sap_code,p.categories,p.name
         """).fetchall()
         return [{
-            "SAP магазина": r["sap_code"], "PLU": r["plu"], "название": r["name"],
+            "Сеть": r["chain"], "SAP магазина": r["sap_code"], "PLU": r["plu"], "название": r["name"],
             "цена сейчас, ₽": r["current_price"], "обычная цена, ₽": r["regular_price"],
             "цена по акции, ₽": r["promo_price"], "скидка, %": r["discount_pct"],
             "маркер акции": r["promo_label"], "категории": r["categories"],
@@ -614,7 +654,7 @@ class CatalogDB:
 
     def history(self) -> list[dict[str, Any]]:
         rows = self.conn.execute("""
-            SELECT h.captured_at,h.imported_at,h.sap_code,h.plu,h.product_name,h.category,
+            SELECT h.chain,h.captured_at,h.imported_at,h.sap_code,h.plu,h.product_name,h.category,
                    h.current_price,h.regular_price,h.promo_price,h.discount_pct,h.promo_label,
                    h.image_url,h.product_url,h.source_url,h.file_name
             FROM price_history h
@@ -633,12 +673,12 @@ class CatalogDB:
 
     def changes(self) -> list[dict[str, Any]]:
         rows = self.conn.execute("""
-            SELECT h.id,h.captured_at,h.imported_at,h.sap_code,h.plu,h.product_name,h.category,
+            SELECT h.id,h.chain,h.captured_at,h.imported_at,h.sap_code,h.plu,h.product_name,h.category,
                    h.current_price,h.regular_price,h.promo_price,h.discount_pct,h.promo_label
             FROM price_history h
-            ORDER BY h.sap_code,h.plu,h.captured_at,h.imported_at,h.id
+            ORDER BY h.chain,h.sap_code,h.plu,h.captured_at,h.imported_at,h.id
         """).fetchall()
-        previous: dict[tuple[str, str], sqlite3.Row] = {}
+        previous: dict[tuple[str, str, str], sqlite3.Row] = {}
         output: list[dict[str, Any]] = []
         fields = [
             ("current_price", "текущая цена"), ("regular_price", "обычная цена"),
@@ -646,7 +686,7 @@ class CatalogDB:
             ("promo_label", "условие/маркер акции"),
         ]
         for r in rows:
-            key = (r["sap_code"], r["plu"])
+            key = (r["chain"], r["sap_code"], r["plu"])
             old = previous.get(key)
             previous[key] = r
             if old is None:
@@ -661,7 +701,7 @@ class CatalogDB:
                 "дата предыдущего наблюдения (UTC)": old["captured_at"],
                 "дата изменения (UTC)": r["captured_at"], "дата импорта (UTC)": r["imported_at"],
                 "SAP магазина": r["sap_code"], "PLU": r["plu"], "название": r["product_name"],
-                "категория": r["category"], "предыдущая цена, ₽": old_price,
+                "Сеть": r["chain"], "категория": r["category"], "предыдущая цена, ₽": old_price,
                 "новая цена, ₽": new_price, "изменение, ₽": delta, "изменение, %": delta_pct,
                 "предыдущая обычная цена, ₽": old["regular_price"], "новая обычная цена, ₽": r["regular_price"],
                 "предыдущая цена по акции, ₽": old["promo_price"], "новая цена по акции, ₽": r["promo_price"],
@@ -673,13 +713,13 @@ class CatalogDB:
     def events(self) -> list[dict[str, Any]]:
         """First appearance + changes in price and visible card fields."""
         rows = self.conn.execute("""
-            SELECT h.id,h.captured_at,h.imported_at,h.sap_code,h.plu,h.product_name,h.category,
+            SELECT h.id,h.chain,h.captured_at,h.imported_at,h.sap_code,h.plu,h.product_name,h.category,
                    h.current_price,h.regular_price,h.promo_price,h.discount_pct,h.promo_label,
                    h.image_url,h.product_url
             FROM price_history h
-            ORDER BY h.sap_code,h.plu,h.captured_at,h.imported_at,h.id
+            ORDER BY h.chain,h.sap_code,h.plu,h.captured_at,h.imported_at,h.id
         """).fetchall()
-        prev: dict[tuple[str, str], sqlite3.Row] = {}
+        prev: dict[tuple[str, str, str], sqlite3.Row] = {}
         events: list[dict[str, Any]] = []
         field_labels = [
             ("current_price", "текущая цена"), ("regular_price", "обычная цена"),
@@ -688,7 +728,7 @@ class CatalogDB:
             ("image_url", "фото"), ("product_url", "ссылка карточки"), ("category", "категория"),
         ]
         for r in rows:
-            key = (r["sap_code"], r["plu"])
+            key = (r["chain"], r["sap_code"], r["plu"])
             old = prev.get(key)
             prev[key] = r
             if old is None:
@@ -705,38 +745,40 @@ class CatalogDB:
                 "тип события": event_type, "дата наблюдения (UTC)": r["captured_at"],
                 "дата импорта (UTC)": r["imported_at"], "предыдущее наблюдение (UTC)": previous_at,
                 "SAP магазина": r["sap_code"], "PLU": r["plu"], "название": r["product_name"],
-                "категория": r["category"], "изменения": differences,
+                "Сеть": r["chain"], "категория": r["category"], "изменения": differences,
                 "цена сейчас, ₽": r["current_price"], "обычная цена, ₽": r["regular_price"],
                 "цена по акции, ₽": r["promo_price"], "скидка, %": r["discount_pct"],
                 "фото URL": r["image_url"],
             })
-        events.sort(key=lambda x: (x["дата наблюдения (UTC)"], x["SAP магазина"], x["PLU"]))
+        events.sort(key=lambda x: (x["дата наблюдения (UTC)"], x["Сеть"], x["SAP магазина"], x["PLU"]))
         return events
 
     def exports(self) -> list[dict[str, Any]]:
         rows = self.conn.execute("""
-            SELECT captured_at,imported_at,sap_code,category,page_number,product_rows,file_name,source_url,source_hash
+            SELECT chain,captured_at,imported_at,sap_code,category,page_number,product_rows,file_name,source_url,source_hash
             FROM exports ORDER BY captured_at,imported_at
         """).fetchall()
         return [dict(zip(EXPORT_COLUMNS, tuple(r))) for r in rows]
 
     def progress(self, products: list[dict[str, Any]]) -> list[dict[str, Any]]:
         exports = self.exports()
-        by_cat: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+        by_cat: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
         for e in exports:
-            by_cat[(str(e.get("SAP магазина") or "НЕ УКАЗАН"), str(e.get("категория") or "не указана"))].append(e)
-        product_map: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+            chain = str(e.get("Сеть") or DEFAULT_CHAIN)
+            by_cat[(chain, str(e.get("SAP магазина") or "НЕ УКАЗАН"), str(e.get("категория") or "не указана"))].append(e)
+        product_map: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
         for p in products:
+            chain = str(p.get("Сеть") or DEFAULT_CHAIN)
             sap = str(p.get("SAP магазина") or "НЕ УКАЗАН")
             for cat in str(p.get("категории") or "не указана").split(" | "):
-                product_map[(sap, cat)].append(p)
+                product_map[(chain, sap, cat)].append(p)
         output = []
         for key, files in sorted(by_cat.items()):
             items = product_map.get(key, [])
             pages = sorted({str(e["страница"]) for e in files if e.get("страница") is not None},
                            key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else x))
             output.append({
-                "SAP магазина": key[0], "категория": key[1], "страниц выгружено": len(pages) if pages else None,
+                "Сеть": key[0], "SAP магазина": key[1], "категория": key[2], "страниц выгружено": len(pages) if pages else None,
                 "номера страниц": ", ".join(pages) if pages else "не определено",
                 "файлов выгрузки": len(files), "уникальных PLU": len({p["PLU"] for p in items}),
                 "первая выгрузка (UTC)": min(str(e.get("дата наблюдения (UTC)") or "") for e in files),
@@ -750,21 +792,26 @@ class CatalogDB:
         self.conn.close()
 
 
-def save_image(url: str | None, sap: str, plu: str, delay: float) -> str | None:
+def save_image(url: str | None, chain: str, sap: str, plu: str, delay: float) -> str | None:
     if not url or not str(url).startswith("https://"):
         return None
-    PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+    store = get_store(normalize_chain(chain))
+    host = str(urlparse(url).hostname or "").lower()
+    if not any(host.endswith(str(h).lower()) for h in store["image_hosts"]):
+        return None
+    photo_dir = BASE_DIR / store["paths"]["photos"]
+    photo_dir.mkdir(parents=True, exist_ok=True)
     safe_plu = re.sub(r"[^A-Za-z0-9_-]", "_", str(plu or "unknown"))
-    old_path = PHOTO_DIR / f"{safe_plu}.jpg"
+    old_path = photo_dir / f"{safe_plu}.jpg"
     # Reuse the v7 filename when it is already present.
     if old_path.exists() and old_path.stat().st_size > 0:
         return str(old_path.relative_to(BASE_DIR))
     safe_sap = re.sub(r"[^A-Za-z0-9_-]", "_", str(sap or "store"))
-    dest = PHOTO_DIR / f"{safe_sap}_{safe_plu}.jpg"
+    dest = photo_dir / f"{safe_sap}_{safe_plu}.jpg"
     if dest.exists() and dest.stat().st_size > 0:
         return str(dest.relative_to(BASE_DIR))
     try:
-        response = requests.get(url, timeout=25, headers={"Referer": "https://5ka.ru/"})
+        response = requests.get(url, timeout=25, headers={"Referer": store["referer"]})
         response.raise_for_status()
         with Image.open(BytesIO(response.content)) as img:
             if img.mode in ("RGBA", "LA", "P"):
@@ -783,14 +830,15 @@ def save_image(url: str | None, sap: str, plu: str, delay: float) -> str | None:
         return None
 
 
-def make_summary(products: list[dict[str, Any]], history: list[dict[str, Any]], changes: list[dict[str, Any]], exports: list[dict[str, Any]], expected_sap: str) -> pd.DataFrame:
+def make_summary(products: list[dict[str, Any]], history: list[dict[str, Any]], changes: list[dict[str, Any]], exports: list[dict[str, Any]], expected_sap: str, chain: str = DEFAULT_CHAIN) -> pd.DataFrame:
     sap_codes = sorted({str(p.get("SAP магазина")) for p in products if p.get("SAP магазина") and p.get("SAP магазина") != "НЕ УКАЗАН"})
     first_seen = [str(p.get("дата первого появления (UTC)")) for p in products if p.get("дата первого появления (UTC)")]
     last_seen = [str(p.get("дата последнего наблюдения (UTC)")) for p in products if p.get("дата последнего наблюдения (UTC)")]
     first_imported = [str(p.get("дата первого импорта (UTC)")) for p in products if p.get("дата первого импорта (UTC)")]
     last_imported = [str(p.get("дата последнего импорта (UTC)")) for p in products if p.get("дата последнего импорта (UTC)")]
     metrics = [
-        ("Версия схемы базы", "9"),
+        ("Версия схемы базы", "10"),
+        ("Сеть", get_store(normalize_chain(chain))["title"]),
         ("Магазин SAP (ожидаемый)", expected_sap),
         ("Фактически найденные SAP", ", ".join(sap_codes) if sap_codes else "не указаны"),
         ("Товаров в текущей базе", len(products)),
@@ -808,7 +856,7 @@ def make_summary(products: list[dict[str, Any]], history: list[dict[str, Any]], 
         ("Последний импорт в базу (UTC)", max(last_imported) if last_imported else None),
         ("Дата формирования отчёта (UTC)", utc_now()),
         ("Важное замечание", "Дата появления = первое наблюдение в выгрузке; дата импорта = фактическая загрузка JSON в SQLite. Время хранится в UTC."),
-        ("Область цен", "Онлайн-каталог 5ka.ru для выбранного адреса доставки; цена может отличаться от цены на полке."),
+        ("Область цен", f"Онлайн-каталог {get_store(normalize_chain(chain))['domain']} для выбранного адреса доставки; цена может отличаться от цены на полке."),
     ]
     return pd.DataFrame(metrics, columns=["Показатель", "Значение"])
 
@@ -873,12 +921,16 @@ def style_workbook(path: Path) -> None:
     wb.save(path)
 
 
-def export_outputs(db: CatalogDB, expected_sap: str) -> dict[str, Any]:
+def export_outputs(db: CatalogDB, expected_sap: str, chain: str = DEFAULT_CHAIN) -> dict[str, Any]:
+    chain = normalize_chain(chain)
+    xlsx_path = OUTPUT_XLSX if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10.xlsx"
+    csv_path = OUTPUT_CSV if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10.csv"
+    report_path = REPORT_JSON if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10_report.json"
     products = db.products()
     # Optional V11 enriched product details live in the same SQLite file.
     detail_rows = []
     try:
-        raw_details = db.conn.execute("""SELECT sap_code,plu,product_name,description,composition,nutrition_json,
+        raw_details = db.conn.execute("""SELECT chain,sap_code,plu,product_name,description,composition,nutrition_json,
             attributes_json,details_text,product_url,image_url,first_imported_at,last_imported_at,last_captured_at
             FROM product_details ORDER BY sap_code,product_name COLLATE NOCASE""").fetchall()
         detail_rows = [dict(zip(DETAIL_COLUMNS, tuple(r))) for r in raw_details]
@@ -899,17 +951,17 @@ def export_outputs(db: CatalogDB, expected_sap: str) -> dict[str, Any]:
     details_df = pd.DataFrame(detail_rows, columns=DETAIL_COLUMNS)
     image_rows = []
     try:
-        raw_images = db.conn.execute("""SELECT sap_code,plu,image_order,image_url,local_file,source,first_seen_at,last_seen_at
+        raw_images = db.conn.execute("""SELECT chain,sap_code,plu,image_order,image_url,local_file,source,first_seen_at,last_seen_at
             FROM product_images ORDER BY sap_code,plu,image_order,id""").fetchall()
         image_rows = [dict(zip(IMAGE_COLUMNS, tuple(r))) for r in raw_images]
     except sqlite3.OperationalError:
         image_rows = []
     images_df = pd.DataFrame(image_rows, columns=IMAGE_COLUMNS)
-    summary_df = make_summary(products, history, changes, exports, expected_sap)
+    summary_df = make_summary(products, history, changes, exports, expected_sap, chain)
     if len(summary_df) >= 2:
         summary_df.loc[summary_df["Показатель"] == "Событий появления/изменений карточки", "Значение"] = len(events)
 
-    with pd.ExcelWriter(OUTPUT_XLSX, engine="openpyxl") as writer:
+    with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
         products_df.to_excel(writer, index=False, sheet_name="Товары")
         summary_df.to_excel(writer, index=False, sheet_name="Сводка")
         history_df.to_excel(writer, index=False, sheet_name="История цен")
@@ -919,14 +971,14 @@ def export_outputs(db: CatalogDB, expected_sap: str) -> dict[str, Any]:
         exports_df.to_excel(writer, index=False, sheet_name="Экспорты")
         details_df.to_excel(writer, index=False, sheet_name="Подробные сведения")
         images_df.to_excel(writer, index=False, sheet_name="Фотогалерея")
-    products_df.to_csv(OUTPUT_CSV, index=False, encoding="utf-8-sig")
-    style_workbook(OUTPUT_XLSX)
+    products_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    style_workbook(xlsx_path)
 
     sap_codes = sorted({str(p.get("SAP магазина")) for p in products if p.get("SAP магазина") and p.get("SAP магазина") != "НЕ УКАЗАН"})
     report = {
-        "generated_at_utc": utc_now(), "database": str(DB_PATH.name), "schema_version": 9,
-        "expected_sap_code": expected_sap, "store_sap_codes": sap_codes,
-        "sap_mismatch": bool(sap_codes and any(s != expected_sap for s in sap_codes)),
+        "generated_at_utc": utc_now(), "database": str(DB_PATH.name), "schema_version": 10,
+        "chain": chain, "expected_sap_code": expected_sap, "store_sap_codes": sap_codes,
+        "sap_mismatch": bool(sap_codes and any(s not in get_store(chain)["sap_codes"] for s in sap_codes)),
         "products": len(products), "products_with_price": sum(p.get("цена сейчас, ₽") is not None for p in products),
         "products_with_discount": sum(p.get("скидка, %") is not None for p in products),
         "products_with_image_url": sum(bool(p.get("фото URL")) for p in products),
@@ -943,10 +995,13 @@ def export_outputs(db: CatalogDB, expected_sap: str) -> dict[str, Any]:
             "all_timestamps_timezone": "UTC",
             "legacy_history_note": "Для наблюдений, импортированных из V8, дата импорта взята из exports.imported_at. Старые значения названия/фото в истории восстановить точно нельзя; в миграции они заполнены последними известными данными карточки.",
         },
-        "price_scope": "Онлайн-каталог 5ka.ru для выбранного адреса доставки; не гарантированная цена на полке.",
-        "outputs": {"xlsx": OUTPUT_XLSX.name, "csv": OUTPUT_CSV.name, "database": DB_PATH.name},
+        "price_scope": f"Онлайн-каталог {get_store(chain)['domain']} для выбранного адреса доставки; не гарантированная цена на полке.",
+        "outputs": {
+            "xlsx": xlsx_path.name, "csv": csv_path.name, "report": report_path.name,
+            "database": DB_PATH.name,
+        },
     }
-    REPORT_JSON.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
 
 
@@ -972,11 +1027,18 @@ def main() -> int:
     parser.add_argument("--no-photos", action="store_true", help="не скачивать фото; сохранить URL")
     parser.add_argument("--photos-only", action="store_true", help="только дозагрузить отсутствующие фотографии из существующей базы")
     parser.add_argument("--photo-delay", type=float, default=0.35, help="пауза между скачиваниями фото, секунды")
-    parser.add_argument("--expected-sap", default="35XY", help="ожидаемый SAP выбранного магазина")
+    parser.add_argument("--chain", default=DEFAULT_CHAIN, help="сеть: 5ka или perekrestok")
+    parser.add_argument("--expected-sap", default=None, help="устаревший алиас: ожидаемый SAP (для обратной совместимости)")
+    parser.add_argument("--input-dir", type=Path, default=None, help="папка с JSON-выгрузками; по умолчанию — папка сети")
     parser.add_argument("--no-checkpoint", action="store_true", help="не импортировать старый checkpoint v4-v6")
     args = parser.parse_args()
 
-    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    chain = normalize_chain(args.chain)
+    allowed_saps = get_store(chain)["sap_codes"]
+    expected_sap = args.expected_sap or allowed_saps[0]
+    input_dir = args.input_dir or (BASE_DIR / get_store(chain)["paths"]["exports"])
+    input_dir.mkdir(parents=True, exist_ok=True)
+
     migrated = bootstrap_v9_database()
     db = CatalogDB(DB_PATH)
     if migrated:
@@ -986,7 +1048,7 @@ def main() -> int:
     errors: list[dict[str, str]] = []
 
     if not args.photos_only:
-        source_files = sorted(p for p in EXPORT_DIR.rglob("*.json") if p.is_file())
+        source_files = sorted(p for p in input_dir.rglob("*.json") if p.is_file())
         for path in source_files:
             try:
                 source_hash = sha256_file(path)
@@ -999,8 +1061,8 @@ def main() -> int:
                 added, unique = db.import_rows(source_hash, path.name, rows, meta)
                 newly_imported += 1
                 print(f"Импорт: {path.name}: строк {added}, уникальных SAP+PLU {unique}")
-                if meta.get("sap_code") and meta["sap_code"] != args.expected_sap:
-                    print(f"  ВНИМАНИЕ: в файле SAP {meta['sap_code']}, ожидался {args.expected_sap}")
+                if meta.get("sap_code") and meta["sap_code"] not in allowed_saps:
+                    print(f"  ВНИМАНИЕ: в файле SAP {meta['sap_code']}, для сети {chain} ожидался один из {allowed_saps}")
                 elif not meta.get("sap_code"):
                     print("  ВНИМАНИЕ: SAP не определён в файле; цены нельзя уверенно привязать к магазину")
             except Exception as exc:
@@ -1014,6 +1076,7 @@ def main() -> int:
                 if not db.has_export(source_hash):
                     rows = load_checkpoint_rows(CHECKPOINT_PATH)
                     meta = {
+                        "chain": DEFAULT_CHAIN,
                         "category": "Legacy checkpoint v4-v6", "source_url": None,
                         "sap_code": "35XY", "captured_at": datetime.fromtimestamp(CHECKPOINT_PATH.stat().st_mtime, timezone.utc).isoformat(timespec="seconds"),
                     }
@@ -1062,7 +1125,7 @@ def main() -> int:
 
     products = db.products()
     if not products:
-        print(f"Нет данных для базы. Положите выгрузки JSON в {EXPORT_DIR}")
+        print(f"Нет данных для базы. Положите выгрузки JSON в {input_dir}")
         db.close()
         return 1
 
@@ -1073,15 +1136,22 @@ def main() -> int:
             if image_file and (BASE_DIR / image_file).exists():
                 pass
             elif product.get("фото URL"):
-                saved = save_image(product.get("фото URL"), str(product.get("SAP магазина") or "store"), str(product.get("PLU")), max(args.photo_delay, 0.0))
+                saved = save_image(
+                    product.get("фото URL"), str(product.get("Сеть") or chain),
+                    str(product.get("SAP магазина") or "store"), str(product.get("PLU")),
+                    max(args.photo_delay, 0.0),
+                )
                 if saved:
-                    db.update_image(str(product.get("SAP магазина")), str(product.get("PLU")), saved)
+                    db.update_image(
+                        str(product.get("Сеть") or chain), str(product.get("SAP магазина")),
+                        str(product.get("PLU")), saved,
+                    )
             if idx % 100 == 0:
                 print(f"  проверено товаров: {idx}/{len(products)}")
     else:
         print("Скачивание фото отключено; URL сохранены в базе.")
 
-    report = export_outputs(db, args.expected_sap)
+    report = export_outputs(db, expected_sap, chain=chain)
     db.close()
     print("\nГОТОВО — база обновлена")
     print(f"Новых файлов импортировано: {newly_imported}; уже обработанных пропущено: {skipped}")
@@ -1090,14 +1160,14 @@ def main() -> int:
     print(f"Наблюдений цен: {report['price_observations']}; изменений цены/скидки: {report['price_changes']}; событий карточек: {report['product_events']}")
     print(f"Файлов выгрузки: {report['source_exports']}; категорий в отчёте: {report['category_progress_rows']}")
     if report["sap_mismatch"]:
-        print(f"ВНИМАНИЕ: найдены SAP {', '.join(report['store_sap_codes'])}, ожидался {args.expected_sap}")
+        print(f"ВНИМАНИЕ: найдены SAP {', '.join(report['store_sap_codes'])}, для сети {chain} ожидался один из {allowed_saps}")
     if errors:
-        print(f"Ошибок импорта файлов: {len(errors)} — см. {REPORT_JSON.name}")
+        print(f"Ошибок импорта файлов: {len(errors)} — см. {report['outputs']['report']}")
     print("Время в базе и Excel: UTC (отдельно дата наблюдения и фактическая дата импорта).")
-    print(f"Excel: {OUTPUT_XLSX}")
-    print(f"CSV: {OUTPUT_CSV}")
+    print(f"Excel: {report['outputs']['xlsx']}")
+    print(f"CSV: {report['outputs']['csv']}")
     print(f"SQLite: {DB_PATH}")
-    print(f"Отчёт: {REPORT_JSON}")
+    print(f"Отчёт: {report['outputs']['report']}")
     return 0
 
 
