@@ -84,6 +84,205 @@ def compare_data(params: dict) -> dict:
         conn.close()
 
 
+def _parse_days(value: str) -> float | None:
+    text = str(value or "").lower().replace(",", ".")
+    match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*(дн|ден|день|дней|мес|месяц|год|г\b)", text)
+    if not match:
+        return None
+    amount = float(match.group(1))
+    unit = match.group(2)
+    if unit.startswith("мес"):
+        return amount * 30
+    if unit.startswith("год"):
+        return amount * 365
+    return amount
+
+
+def search_products(params: dict) -> dict:
+    """Поиск по названию, составу, БЖУ, бренду, сроку и цене."""
+    chain = request_chain(params)
+    raw_query = str((params.get("q") or [""])[0]).strip()
+    limit = max(10, min(int((params.get("limit") or ["50"])[0]), 500))
+    conditions: dict = {}
+    parts = [p.strip() for p in re.split(r",|\s+и\s+|;", raw_query, flags=re.I) if p.strip()]
+    for part in parts:
+        text = part.lower()
+        match = re.search(r"(?:бел(?:ок|ки|ка)|protein)\s*(больше|>)\s*([0-9]+(?:[.,][0-9]+)?)", text)
+        if match:
+            conditions["min_protein"] = float(match.group(2).replace(",", ".")); continue
+        match = re.search(r"жир(?:ов|ы|а)?\s*(меньше|<)\s*([0-9]+(?:[.,][0-9]+)?)", text)
+        if match:
+            conditions["max_fat"] = float(match.group(1).replace(",", ".")); continue
+        match = re.search(r"углевод(?:ов|ы)?\s*(меньше|<)\s*([0-9]+(?:[.,][0-9]+)?)", text)
+        if match:
+            conditions["max_carbs"] = float(match.group(1).replace(",", ".")); continue
+        match = re.search(r"срок[^\d]*([0-9]+)\s*(дн|ден|день|дней|мес|месяц|год)", text)
+        if match and ("больше" in text or ">" in text):
+            conditions["min_shelf_days"] = _parse_days(match.group(0)); continue
+        match = re.search(r"(?:дешевле|до)\s*([0-9]+(?:[.,][0-9]+)?)\s*(?:руб|₽)?", text)
+        if match:
+            conditions["max_price"] = float(match.group(1).replace(",", ".")); continue
+        match = re.search(r"бренд\s+(.+)", text)
+        if match:
+            conditions["brand"] = match.group(1).strip(); continue
+        match = re.search(r"(?:состав\s+)?содержит\s+(.+)", text)
+        if match:
+            conditions["ingredient"] = match.group(1).strip(); continue
+        if "без сахар" in text:
+            conditions["sugar_free"] = True
+
+    for key in ("min_protein", "max_fat", "max_carbs", "max_price", "min_shelf_days"):
+        if params.get(key):
+            conditions[key] = float(str(params[key][0]).replace(",", "."))
+    for key in ("brand", "ingredient"):
+        if params.get(key):
+            conditions[key] = str(params[key][0])
+    if params.get("sugar_free"):
+        conditions["sugar_free"] = str(params["sugar_free"][0]).lower() in {"1", "yes", "true"}
+
+    conn = connect_db()
+    try:
+        rows = conn.execute("""
+            SELECT p.chain,p.sap_code,p.plu,p.name,p.current_price,p.image_url,p.product_url,
+                   p.categories,d.composition,d.nutrition_json,d.attributes_json,d.details_text
+            FROM products p
+            LEFT JOIN product_details d ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
+            WHERE p.chain=?
+        """, (chain,)).fetchall()
+    finally:
+        conn.close()
+
+    items = []
+    for row in rows:
+        item = dict(row)
+        nutrition = item.pop("nutrition_json")
+        attrs = item.pop("attributes_json")
+        try:
+            nutrition = json.loads(nutrition or "{}")
+        except Exception:
+            nutrition = {}
+        try:
+            attrs = json.loads(attrs or "{}")
+        except Exception:
+            attrs = {}
+        if not isinstance(nutrition, dict): nutrition = {}
+        if not isinstance(attrs, dict): attrs = {}
+        composition = str(item.get("composition") or "")
+        text = str(item.get("details_text") or "")
+        ok = True
+        if conditions.get("min_protein") is not None and float(nutrition.get("Белки") or 0) < conditions["min_protein"]:
+            ok = False
+        if conditions.get("max_fat") is not None and float(nutrition.get("Жиры") or 0) > conditions["max_fat"]:
+            ok = False
+        if conditions.get("max_carbs") is not None and float(nutrition.get("Углеводы") or 0) > conditions["max_carbs"]:
+            ok = False
+        if conditions.get("max_price") is not None and (item.get("current_price") or 0) > conditions["max_price"]:
+            ok = False
+        if conditions.get("brand") and conditions["brand"].lower() not in str(attrs.get("Бренд") or "").lower():
+            ok = False
+        if conditions.get("ingredient"):
+            needle = conditions["ingredient"].lower()
+            if needle not in composition.lower() and needle not in text.lower():
+                ok = False
+        if conditions.get("sugar_free") and re.search(r"сахар|сахароз|глюкоз|фруктоз", composition + " " + text, re.I):
+            ok = False
+        if conditions.get("min_shelf_days") is not None:
+            days = _parse_days(str(attrs.get("Срок хранения") or attrs.get("Срок годности") or ""))
+            if days is None or days < conditions["min_shelf_days"]:
+                ok = False
+        if not ok:
+            continue
+        item["nutrition"] = nutrition
+        item["attributes"] = attrs
+        item["quality"] = quality_fields(item)
+        items.append(item)
+        if len(items) >= limit:
+            break
+    return {"query": raw_query, "conditions": conditions, "total": len(items), "items": items}
+
+
+def ingredients_data(params: dict) -> dict:
+    """Поиск ингредиента по compositions с пометками-эвристиками."""
+    chain = request_chain(params)
+    needle = str((params.get("ingredient") or [""])[0]).strip()
+    limit = max(10, min(int((params.get("limit") or ["100"])[0]), 500))
+    conn = connect_db()
+    try:
+        rows = conn.execute("""
+            SELECT p.sap_code,p.plu,p.name,p.current_price,p.product_url,d.composition
+            FROM products p JOIN product_details d
+              ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
+            WHERE p.chain=? AND d.composition IS NOT NULL AND d.composition!=''
+        """, (chain,)).fetchall()
+    finally:
+        conn.close()
+    markers = {
+        "пальмовое масло": r"пальмов(?:ое|ый)\s+масло|пальмин",
+        "сахар": r"сахар|сахароз|глюкоз|фруктоз",
+        "арахис": r"арахис",
+        "аллергены": r"аллерген|молок|яйц|орех|глютен|рыб|со[яе]",
+    }
+    items = []
+    for row in rows:
+        composition = str(row["composition"] or "")
+        if needle and needle.lower() not in composition.lower():
+            continue
+        found = [name for name, pattern in markers.items() if re.search(pattern, composition, re.I)]
+        items.append({
+            "sap_code": row["sap_code"], "plu": row["plu"], "name": row["name"],
+            "current_price": row["current_price"], "composition": composition,
+            "product_url": row["product_url"], "markers": found,
+        })
+        if len(items) >= limit:
+            break
+    return {
+        "ingredient": needle, "total": len(items), "items": items,
+        "disclaimer": "Автоматический анализ текста состава, не лабораторная проверка продукта.",
+    }
+
+
+def compare_table_data(params: dict) -> dict:
+    """Сравнение 2–5 товаров с ценой за кг и лучшими значениями."""
+    chain = request_chain(params)
+    plus = params.get("plu") or []
+    if isinstance(plus, str):
+        plus = [plus]
+    plus = [str(x).strip() for x in plus if str(x).strip()][:5]
+    if len(plus) < 2:
+        raise ValueError("Для сравнения нужно от 2 до 5 PLU")
+    conn = connect_db()
+    try:
+        marks = ",".join("?" for _ in plus)
+        rows = conn.execute(f"""
+            SELECT p.sap_code,p.plu,p.name,p.current_price,p.image_url,d.composition,
+                   d.nutrition_json,d.attributes_json
+            FROM products p LEFT JOIN product_details d
+              ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
+            WHERE p.chain=? AND p.plu IN ({marks})
+        """, (chain, *plus)).fetchall()
+    finally:
+        conn.close()
+    items = []
+    for row in rows:
+        item = dict(row)
+        for key in ("nutrition_json", "attributes_json"):
+            try:
+                item[key.replace("_json", "")] = json.loads(item.pop(key) or "{}")
+            except Exception:
+                item[key.replace("_json", "")] = {}
+        weight, _unit = _to_grams(str(item.get("attributes", {}).get("Вес") or ""))
+        price = item.get("current_price")
+        item["price_per_kg"] = round(price / weight * 1000, 2) if price and weight else None
+        items.append(item)
+    best = {}
+    for key, lower in (("current_price", True), ("price_per_kg", True), ("Белки", False), ("Ккал", True)):
+        values = [x.get(key) if key in x else x.get("nutrition", {}).get(key) for x in items]
+        values = [float(v) for v in values if v not in (None, "")]
+        if values:
+            best[key] = min(values) if lower else max(values)
+    return {"items": items, "best": best}
+
+
 def request_chain(params: dict) -> str:
     """Сеть из query/body; по умолчанию — сеть V14."""
     value = params.get("chain") if isinstance(params, dict) else None
@@ -1885,6 +2084,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "15.0-dev", "chains": list(STORES)})
             if path == "/api/stores": return self._json(200, stores_data())
             if path == "/api/compare": return self._json(200, compare_data(params))
+            if path == "/api/search": return self._json(200, search_products(params))
+            if path == "/api/ingredients": return self._json(200, ingredients_data(params))
+            if path == "/api/compare-table": return self._json(200, compare_table_data(params))
             if path == "/api/dashboard": return self._json(200, dashboard_data(params))
             if path == "/api/analytics": return self._json(200, analytics_data(params))
             if path == "/api/products": return self._json(200, products_data(params))

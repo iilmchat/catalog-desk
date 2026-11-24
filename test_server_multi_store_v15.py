@@ -123,6 +123,36 @@ class MultiStoreBatchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mod.batch_record(payload)
 
+    def test_search_ingredients_and_compare_table(self):
+        conn = sqlite3.connect(mod.DB_PATH)
+        conn.execute("""
+            INSERT OR REPLACE INTO product_details(chain,sap_code,plu,product_name,composition,
+                nutrition_json,attributes_json,details_text,first_imported_at,last_imported_at,last_captured_at)
+            VALUES('perekrestok','XSEO','100001','Перекрёсток','Сыры, пальмовое масло, сахар, арахис',
+                '{"Белки":"20","Жиры":"3","Углеводы":"5","Ккал":"250"}',
+                '{"Бренд":"Hochland","Вес":"0.15 кг","Срок хранения":"180 дн."}',
+                'Состав Сыры, пальмовое масло, сахар, арахис',
+                '2026-11-24','2026-11-24','2026-11-24')
+        """)
+        conn.commit()
+        conn.close()
+
+        found = mod.search_products({"q": ["белки больше 15 г, Composition содержит пальмовое масло"], "chain": ["perekrestok"]})
+        self.assertEqual(found["total"], 1)
+        self.assertEqual(found["items"][0]["plu"], "100001")
+
+        no_sugar = mod.search_products({"q": ["без сахара"], "chain": ["perekrestok"]})
+        self.assertEqual(no_sugar["total"], 0)
+
+        ingredients = mod.ingredients_data({"ingredient": ["пальмовое"], "chain": ["perekrestok"]})
+        self.assertEqual(ingredients["total"], 1)
+        self.assertIn("пальмовое масло", ingredients["items"][0]["markers"])
+        self.assertIn("не лабораторная", ingredients["disclaimer"])
+
+        table = mod.compare_table_data({"chain": ["perekrestok"], "plu": ["100001", "24139"]})
+        self.assertEqual(len(table["items"]), 1)
+        self.assertEqual(table["best"]["current_price"], 120)
+
     def test_stores_registry_and_cross_chain_compare(self):
         stores = mod.stores_data()
         self.assertEqual({s["chain"] for s in stores}, {"5ka", "perekrestok"})

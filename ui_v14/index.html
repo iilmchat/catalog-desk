@@ -16,6 +16,7 @@
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <button class="nav-link active" data-view="dashboard"><span class="nav-ico">◫</span>Обзор</button>
       <button class="nav-link" data-view="products"><span class="nav-ico">▦</span>Каталог <span class="nav-count" id="nav-product-count">—</span></button>
+      <button class="nav-link" data-view="search"><span class="nav-ico">⌕</span>Поиск по составу</button>
       <button class="nav-link" data-view="enrichment"><span class="nav-ico">✧</span>Массовое обогащение</button>
       <button class="nav-link" data-view="analytics"><span class="nav-ico">⌁</span>Аналитика</button>
       <button class="nav-link" data-view="changes"><span class="nav-ico">↗</span>Изменения цен</button>
@@ -55,6 +56,13 @@
       <div class="toolbar panel"><label class="search-box"><span>⌕</span><input id="search-input" type="search" placeholder="Найти товар, бренд или PLU…" autocomplete="off"></label><select id="category-filter"><option value="">Все категории</option></select><select id="promo-filter"><option value="all">Любая цена</option><option value="yes">Только со скидкой</option><option value="no">Без скидки</option></select><select id="sort-filter"><option value="name">По названию</option><option value="price_asc">Сначала дешевле</option><option value="price_desc">Сначала дороже</option><option value="discount">По размеру скидки</option><option value="recent">Недавно обновлённые</option><option value="first">Недавно добавленные</option></select></div>
       <div class="results-line"><strong id="products-total">0 товаров</strong><span id="products-hint">Загрузка каталога</span></div>
       <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА</th><th>ОБЫЧНАЯ</th><th>СКИДКА</th><th>ДОПЫ</th><th>НАБЛЮДЕНИЙ</th><th></th></tr></thead><tbody id="products-body"><tr><td colspan="8" class="empty-cell">Загружаем товары…</td></tr></tbody></table></div><div class="pagination"><span id="page-info">Страница 1</span><div><button class="outline-button small" id="prev-page">← Назад</button><button class="outline-button small" id="next-page">Вперёд →</button></div></div></div>
+    </section>
+
+    <section class="view" id="view-search">
+      <div class="page-intro compact"><div><div class="eyebrow green">УМНЫЙ ПОИСК</div><h1>Поиск по составу и БЖУ</h1><p>Например: «Без сахара», «Белка больше 15 г», «Срок хранения больше 30 дней», «Состав содержит пальмовое масло».</p></div></div>
+      <div class="toolbar panel"><label class="search-box"><span>⌕</span><input id="search-query" type="search" placeholder="Условия поиска…" autocomplete="off"></label><button class="primary-button" id="search-run">Найти</button></div>
+      <div class="info-strip"><span>ⓘ</span><div>Можно объединять условия запятой: «до 200 рублей, белки больше 10 г». Результаты — анализ текста состава, не лабораторная проверка.</div></div>
+      <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>СЕТЬ</th><th>ЦЕНА</th><th>БЕЛКИ</th><th>ЖИРЫ</th><th>ПОЛНОТА</th><th>СОСТАВ</th></tr></thead><tbody id="search-body"><tr><td colspan="7" class="empty-cell">Введите условие и нажмите «Найти».</td></tr></tbody></table></div></div>
     </section>
 
     <section class="view" id="view-analytics">
