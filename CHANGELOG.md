@@ -61,4 +61,7 @@
 
 ---
 
-Ссылки на релизы будут добавлены после создания GitHub-репозитория.
+[Unreleased]: https://github.com/iilmchat/catalog-desk/compare/main...HEAD
+[V14.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v14.0
+[V9]: https://github.com/iilmchat/catalog-desk/releases/tag/v9
+[V7]: https://github.com/iilmchat/catalog-desk/releases/tag/v7

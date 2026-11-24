@@ -32,7 +32,7 @@ git --version
 ## 2. Установка
 
 ```powershell
-git clone <your-repo-url> catalog-desk
+git clone https://github.com/iilmchat/catalog-desk.git catalog-desk
 cd catalog-desk
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1

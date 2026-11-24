@@ -4,6 +4,8 @@
 
 © 2026 Catalog Desk · V14.0
 
+**Репозиторий:** https://github.com/iilmchat/catalog-desk
+
 ---
 
 ## Что это
