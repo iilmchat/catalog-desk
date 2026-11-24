@@ -1,4 +1,5 @@
-Pyaterochka Catalog Desk V14.0
-Build: 2026-11-24
-Database: pyaterochka_catalog_v9.sqlite3 (existing database, preserved)
+Catalog Desk V15.0
+Build: 2026-11-25
+Database: pyaterochka_catalog_v9.sqlite3 (schema V10, chain-aware)
+Chains: 5ka, perekrestok
 UI port: 8767

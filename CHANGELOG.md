@@ -7,6 +7,13 @@
 ## [Unreleased]
 
 ### Added
+- (записи добавляются в каждом коммите с кодом)
+
+## [V15.0] — 2026-11-25
+
+**Тема:** Catalog Desk становится многомагазинной системой: Пятёрочка + Перекрёсток в одной базе с историей, качеством данных и локальным API.
+
+### Added
 - Документация по образцу PriceScope: `README.md`, `GET_STARTED.md`, `TODO.md`,
   `docs/` (хаб, реестр `CD-XXX`, TODO_KI, TODO_SPRINTS, RULES, ARCHITECTURE,
   RELEASES, ADR, дизайн V15, пользовательское руководство и QA-чеклист).
@@ -108,7 +115,8 @@
 
 ---
 
-[Unreleased]: https://github.com/iilmchat/catalog-desk/compare/main...HEAD
+[Unreleased]: https://github.com/iilmchat/catalog-desk/compare/v15.0...HEAD
+[V15.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v15.0
 [V14.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v14.0
 [V9]: https://github.com/iilmchat/catalog-desk/releases/tag/v9
 [V7]: https://github.com/iilmchat/catalog-desk/releases/tag/v7
