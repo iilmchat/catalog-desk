@@ -26,6 +26,9 @@ from urllib.parse import parse_qs, urlparse, unquote
 import sqlite3
 from io import BytesIO
 
+from catalog_config import DEFAULT_CHAIN, get_store
+from catalog_migrations import backup_before_v15, migrate_v9_to_v10
+
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "ui_v14"
 EXPORT_DIR = BASE_DIR / "5ka_exports"
@@ -35,7 +38,9 @@ PHOTO_DIR = BASE_DIR / "photos5ka"
 DB_PATH = BASE_DIR / "pyaterochka_catalog_v9.sqlite3"
 IMPORTER_PATH = BASE_DIR / "import_5ka_catalog_v9.py"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-EXPECTED_SAP = "35XY"
+# Обратная совместимость V14: сеть по умолчанию. В V15 заменится на
+# список разрешённых SAP через catalog_config (CD-002).
+EXPECTED_SAP = get_store(DEFAULT_CHAIN)["default_sap"]
 
 _JOB_LOCK = threading.Lock()
 _JOB = {
@@ -210,6 +215,8 @@ def ensure_ui_columns() -> None:
         INSERT OR IGNORE INTO enrichment_batch_state(id,active,max_items,delay_seconds,processed_count,updated_at)
         VALUES(1,0,25,15,0,datetime('now'));
         """)
+        # V10: добавляем chain и расширяем ключи до засечения очереди.
+        migrate_v9_to_v10(conn)
         # One task per product. Existing task status is never overwritten on startup.
         stamp = now_iso()
         conn.execute("""
@@ -760,13 +767,13 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                     conn.execute("""
                         INSERT INTO product_detail_history(sap_code,plu,captured_at,imported_at,source_hash,file_name,details_json)
                         VALUES(?,?,?,?,?,?,?)
-                        ON CONFLICT(source_hash,sap_code,plu) DO NOTHING
+                        ON CONFLICT(source_hash,chain,sap_code,plu) DO NOTHING
                     """, (sap,plu,captured,imported,digest,path.name,details_json))
                     conn.execute("""
                         INSERT INTO product_details(sap_code,plu,product_name,product_url,image_url,description,composition,
                             nutrition_json,attributes_json,details_text,first_imported_at,last_imported_at,last_captured_at,last_source_hash)
                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                        ON CONFLICT(sap_code,plu) DO UPDATE SET
+                        ON CONFLICT(chain,sap_code,plu) DO UPDATE SET
                             product_name=COALESCE(excluded.product_name,product_details.product_name),
                             product_url=COALESCE(excluded.product_url,product_details.product_url),
                             image_url=COALESCE(excluded.image_url,product_details.image_url),
@@ -784,7 +791,7 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                         conn.execute("""
                             INSERT INTO product_images(sap_code,plu,image_url,image_order,source,first_seen_at,last_seen_at)
                             VALUES(?,?,?,?,?,?,?)
-                            ON CONFLICT(sap_code,plu,image_url) DO UPDATE SET
+                            ON CONFLICT(chain,sap_code,plu,image_url) DO UPDATE SET
                                 image_order=MIN(product_images.image_order,excluded.image_order),
                                 last_seen_at=excluded.last_seen_at
                         """, (sap,plu,image_url,image_idx,"details",captured,captured))
@@ -1699,9 +1706,12 @@ def main() -> int:
         backup_path = backup_database_before_v14()
         if backup_path:
             print(f"Резервная копия исходной базы: {backup_path.name}")
+        v15_backup = backup_before_v15(DB_PATH)
+        if v15_backup:
+            print(f"Резервная копия перед V10: {v15_backup.name}")
         ensure_ui_columns()
     except Exception as exc:
-        print(f"Предупреждение: не удалось применить миграции V14: {exc}")
+        print(f"Предупреждение: не удалось применить миграции V14/V15: {exc}")
     url = f"http://127.0.0.1:{args.port}/"
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.daemon_threads = True

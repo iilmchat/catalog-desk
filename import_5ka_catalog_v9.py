@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urlparse
 
+from catalog_migrations import migrate_v9_to_v10
+
 import pandas as pd
 import requests
 from PIL import Image
@@ -476,6 +478,8 @@ class CatalogDB:
         """)
         self.conn.execute("INSERT INTO schema_meta(key,value) VALUES('schema_version','9') ON CONFLICT(key) DO UPDATE SET value='9'")
         self.conn.commit()
+        # V10: добавляем chain и расширяем ключи; идемпотентно.
+        migrate_v9_to_v10(self.conn)
 
     def has_export(self, source_hash: str) -> bool:
         return self.conn.execute("SELECT 1 FROM exports WHERE source_hash=?", (source_hash,)).fetchone() is not None
@@ -559,7 +563,7 @@ class CatalogDB:
 
                 self.conn.execute(
                     """INSERT INTO product_categories(sap_code,plu,category,first_seen_at,last_seen_at) VALUES(?,?,?,?,?)
-                       ON CONFLICT(sap_code,plu,category) DO UPDATE SET
+                       ON CONFLICT(chain,sap_code,plu,category) DO UPDATE SET
                        last_seen_at=MAX(last_seen_at,excluded.last_seen_at),
                        first_seen_at=MIN(first_seen_at,excluded.first_seen_at)""",
                     (sap, plu, category, seen_at, seen_at),
