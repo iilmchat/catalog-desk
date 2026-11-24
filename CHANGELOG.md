@@ -45,6 +45,10 @@
   (GET-параметр и POST-тело), динамические подписи/логотип, сравнение одного PLU
   между сетями (`/api/compare`); интерфейс обновлён до V15.0 без копирования `ui_v14`.
   Тест реестра и сравнения добавлен, 75 тестов зелёные.
+- S19: bookmarklet'ы `pr_export_*` и `pr_batch_enrichment_v15.user.js` для
+  `perekrestok.ru`: `chain='perekrestok'`, новые `source`-маркеры, SAP из
+  `localStorage` с fallback `XSEO`, guard `pr-v15-*`, ссылки в интерфейсе;
+  3 теста на маркеры/домены и синтаксис JS, 78 тестов зелёные.
 - `catalog_ui_server_v14.py` и `import_5ka_catalog_v9.py` применяют миграцию V10
   при старте/импорте; `ON CONFLICT` переведены на ключи с `chain`.
 - `EXPECTED_SAP` берётся из конфига сети по умолчанию вместо литерала `35XY`.

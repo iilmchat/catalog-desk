@@ -65,7 +65,7 @@
 
 ### CD-007 — userscript привязан к домену 5ka.ru
 
-**Статус:** Open · **Спринт:** S17, S19
+**Статус:** Fixed в S19 (userscript для perekrestok.ru с guard `pr-v15-*`) · **Спринт:** S17, S19
 
 `@match https://5ka.ru/*`, `LOCAL_API`, `py5ka-*` guard в `sessionStorage`,
 `current_sap || '35XY'`. При 110 совпадающих PLU guard без префикса сети пропустит
@@ -73,7 +73,7 @@
 
 ### CD-008 — Detail-букмаркет запрашивает SAP вручную
 
-**Статус:** Open · **Спринт:** S19
+**Статус:** Fixed в S19 · **Спринт:** S19
 
 `prompt("Введите SAP-код...", "35XY")`: каталожный экспорт берёт SAP из
 `localStorage.DeliveryPanelStore` (`XSEO`), а detail — от пользователя (`47XS`).

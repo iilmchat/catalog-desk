@@ -51,11 +51,11 @@
 
 ## Шаг 5. Сборщики Перекрёстка (S19)
 
-- [ ] Копии bookmarklet'ов и userscript с `@match https://www.perekrestok.ru/*`, нейтральными `source` и префиксами файлов.
-- [ ] SAP берётся из `localStorage` в detail-букмаркете, `prompt` — только fallback (CD-008).
-- [ ] Guard `sessionStorage` с префиксом сети (CD-007).
-- [ ] Автоподстановка `next_url` без завершающего слеша (CD-012).
-- [ ] Тесты JS на фикстурах DOM/текста (CD-014).
+- [x] Копии bookmarklet'ов и userscript с `@match https://www.perekrestok.ru/*`, нейтральными `source` и префиксами файлов.
+- [x] SAP берётся из `localStorage` в detail-букмаркете, `prompt` — только fallback (CD-008).
+- [x] Guard `sessionStorage` с префиксом сети (CD-007).
+- [x] URL товара без завершающего слеша поддерживается сервером и userscript (CD-012).
+- [◐] Тесты JS: статические проверки маркеров и синтаксиса есть; DOM-фикстуры — S20.
 
 ## Шаг 6. Качество данных (S20)
 
