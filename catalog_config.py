@@ -120,6 +120,33 @@ def allowed_sap(chain: str) -> list[str]:
     return list(get_store(chain)["sap_codes"])
 
 
+def chain_from_sap(sap: str | None) -> str | None:
+    """Определить сеть по SAP-коду; неизвестный код → None."""
+    text = str(sap or "").strip()
+    for chain, cfg in STORES.items():
+        if text in cfg["sap_codes"]:
+            return chain
+    return None
+
+
+def chain_from_payload(payload: dict | None) -> str:
+    """Сеть экспорта: явное поле → домен URL → маркер source → SAP."""
+    if not isinstance(payload, dict):
+        return DEFAULT_CHAIN
+    if payload.get("chain"):
+        return normalize_chain(payload["chain"])
+    url = str(payload.get("source_url") or payload.get("product_url") or "").lower()
+    for chain, cfg in STORES.items():
+        if any(domain in url for domain in cfg["match_domains"]):
+            return chain
+    inferred = chain_from_source(payload.get("source"))
+    if inferred:
+        return inferred
+    store = payload.get("store") if isinstance(payload.get("store"), dict) else {}
+    inferred = chain_from_sap(store.get("sap_code") or payload.get("sap_code"))
+    return inferred or DEFAULT_CHAIN
+
+
 def path_for(chain: str, kind: str) -> Path:
     """Путь к папке данных сети: exports/categories/details/photos."""
     cfg = get_store(chain)

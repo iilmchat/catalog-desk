@@ -26,7 +26,16 @@ from urllib.parse import parse_qs, urlparse, unquote
 import sqlite3
 from io import BytesIO
 
-from catalog_config import DEFAULT_CHAIN, get_store
+from catalog_config import (
+    DEFAULT_CHAIN,
+    all_sources,
+    allowed_sap,
+    chain_from_payload,
+    get_store,
+    normalize_chain,
+    STORES,
+    product_url_prefix,
+)
 from catalog_migrations import backup_before_v15, migrate_v9_to_v10
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -41,6 +50,33 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 # Обратная совместимость V14: сеть по умолчанию. В V15 заменится на
 # список разрешённых SAP через catalog_config (CD-002).
 EXPECTED_SAP = get_store(DEFAULT_CHAIN)["default_sap"]
+
+
+def request_chain(params: dict) -> str:
+    """Сеть из query/body; по умолчанию — сеть V14."""
+    value = params.get("chain") if isinstance(params, dict) else None
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return normalize_chain(value)
+
+
+def validate_store(chain: str, sap: str) -> None:
+    """Проверить, что SAP относится к сети."""
+    if sap not in allowed_sap(chain):
+        raise ValueError(
+            f"SAP {sap} не относится к сети {chain}; ожидается один из {allowed_sap(chain)}"
+        )
+
+
+def chain_path(chain: str, kind: str) -> Path:
+    """Путь папки сети относительно текущего BASE_DIR (уважает подмену в тестах)."""
+    return BASE_DIR / get_store(normalize_chain(chain))["paths"][kind]
+
+
+def store_dirs(kind: str) -> list[Path]:
+    """Все папки данного типа по сетям (exports/categories/details/photos)."""
+    return [chain_path(chain, kind) for chain in STORES]
+
 
 _JOB_LOCK = threading.Lock()
 _JOB = {
@@ -217,13 +253,16 @@ def ensure_ui_columns() -> None:
         """)
         # V10: добавляем chain и расширяем ключи до засечения очереди.
         migrate_v9_to_v10(conn)
+        state_columns = {r[1] for r in conn.execute("PRAGMA table_info(enrichment_batch_state)")}
+        if "current_chain" not in state_columns:
+            conn.execute("ALTER TABLE enrichment_batch_state ADD COLUMN current_chain TEXT")
         # One task per product. Existing task status is never overwritten on startup.
         stamp = now_iso()
         conn.execute("""
             INSERT OR IGNORE INTO enrichment_tasks(
-                sap_code,plu,status,created_at,last_action_at,processed_at,note
+                chain,sap_code,plu,status,created_at,last_action_at,processed_at,note
             )
-            SELECT p.sap_code,p.plu,
+            SELECT p.chain,p.sap_code,p.plu,
                    CASE WHEN d.sap_code IS NOT NULL AND (
                        COALESCE(d.composition,'')!='' OR COALESCE(d.description,'')!='' OR
                        COALESCE(d.nutrition_json,'{}') NOT IN ('{}','null','') OR
@@ -239,17 +278,17 @@ def ensure_ui_columns() -> None:
                    ) THEN ? ELSE NULL END,
                    CASE WHEN d.sap_code IS NOT NULL THEN 'Уже есть подробные сведения до V13' ELSE NULL END
             FROM products p LEFT JOIN product_details d
-              ON d.sap_code=p.sap_code AND d.plu=p.plu
+              ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
         """, (stamp, stamp, stamp))
         # Seed the gallery with the main catalogue image and any existing detail image.
         conn.execute("""
-            INSERT OR IGNORE INTO product_images(sap_code,plu,image_url,local_file,image_order,source,first_seen_at,last_seen_at)
-            SELECT sap_code,plu,image_url,image_file,0,'catalog',first_seen_at,last_seen_at
+            INSERT OR IGNORE INTO product_images(chain,sap_code,plu,image_url,local_file,image_order,source,first_seen_at,last_seen_at)
+            SELECT chain,sap_code,plu,image_url,image_file,0,'catalog',first_seen_at,last_seen_at
             FROM products WHERE image_url IS NOT NULL AND image_url!=''
         """)
         conn.execute("""
-            INSERT OR IGNORE INTO product_images(sap_code,plu,image_url,image_order,source,first_seen_at,last_seen_at)
-            SELECT sap_code,plu,image_url,1,'details',last_captured_at,last_captured_at
+            INSERT OR IGNORE INTO product_images(chain,sap_code,plu,image_url,image_order,source,first_seen_at,last_seen_at)
+            SELECT chain,sap_code,plu,image_url,1,'details',last_captured_at,last_captured_at
             FROM product_details WHERE image_url IS NOT NULL AND image_url!=''
         """)
         # One-time cleanup of legacy V11-V13 recommendation images. Old exporters
@@ -264,10 +303,10 @@ def ensure_ui_columns() -> None:
                 WHERE source='details'
                   AND image_url NOT IN (
                     SELECT p.image_url FROM products p
-                    WHERE p.sap_code=product_images.sap_code AND p.plu=product_images.plu AND p.image_url IS NOT NULL
+                    WHERE p.chain=product_images.chain AND p.sap_code=product_images.sap_code AND p.plu=product_images.plu AND p.image_url IS NOT NULL
                     UNION
                     SELECT d.image_url FROM product_details d
-                    WHERE d.sap_code=product_images.sap_code AND d.plu=product_images.plu AND d.image_url IS NOT NULL
+                    WHERE d.chain=product_images.chain AND d.sap_code=product_images.sap_code AND d.plu=product_images.plu AND d.image_url IS NOT NULL
                   )
             """)
             conn.execute("INSERT OR REPLACE INTO catalog_ui_meta(meta_key,meta_value) VALUES('gallery_recommendations_cleaned_v14',?)", (now_iso(),))
@@ -275,13 +314,13 @@ def ensure_ui_columns() -> None:
         # values BEFORE labels (3.5 Белки), while older exports parsed label-first.
         # Repair both the dedicated nutrition JSON and duplicate macro attributes.
         for detail_row in conn.execute(
-            "SELECT sap_code,plu,nutrition_json,attributes_json,details_text FROM product_details"
+            "SELECT chain,sap_code,plu,nutrition_json,attributes_json,details_text FROM product_details"
         ).fetchall():
-            recovered = parse_nutrition_from_details_text(detail_row[4] or "")
+            recovered = parse_nutrition_from_details_text(detail_row[5] or "")
             if len(recovered) >= 2:
-                try: current_nutrition = json.loads(detail_row[2] or "{}")
+                try: current_nutrition = json.loads(detail_row[3] or "{}")
                 except Exception: current_nutrition = {}
-                try: current_attrs = json.loads(detail_row[3] or "{}")
+                try: current_attrs = json.loads(detail_row[4] or "{}")
                 except Exception: current_attrs = {}
                 if not isinstance(current_nutrition, dict): current_nutrition = {}
                 if not isinstance(current_attrs, dict): current_attrs = {}
@@ -289,9 +328,9 @@ def ensure_ui_columns() -> None:
                 for key, value in recovered.items():
                     current_attrs[key] = f"{value}{' ккал' if key == 'Ккал' else ' г'}"
                 conn.execute(
-                    "UPDATE product_details SET nutrition_json=?,attributes_json=? WHERE sap_code=? AND plu=?",
+                    "UPDATE product_details SET nutrition_json=?,attributes_json=? WHERE chain=? AND sap_code=? AND plu=?",
                     (json.dumps(current_nutrition, ensure_ascii=False),
-                     json.dumps(current_attrs, ensure_ascii=False), detail_row[0], detail_row[1])
+                     json.dumps(current_attrs, ensure_ascii=False), detail_row[0], detail_row[1], detail_row[2])
                 )
 
         # Keep detail snapshots consistent with the repaired current card. The raw
@@ -315,20 +354,21 @@ def ensure_ui_columns() -> None:
         # V13 marked any non-empty detail as processed. Re-queue partial cards once
         # so V14 can fill their missing blocks; a successful V14 import marks them processed again.
         incomplete_rows = conn.execute("""
-            SELECT p.sap_code,p.plu,d.composition,d.description,d.nutrition_json,d.attributes_json,d.details_text
-            FROM products p LEFT JOIN product_details d ON d.sap_code=p.sap_code AND d.plu=p.plu
-            JOIN enrichment_tasks t ON t.sap_code=p.sap_code AND t.plu=p.plu
+            SELECT p.chain,p.sap_code,p.plu,d.composition,d.description,d.nutrition_json,d.attributes_json,d.details_text
+            FROM products p
+            LEFT JOIN product_details d ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
+            JOIN enrichment_tasks t ON t.chain=p.chain AND t.sap_code=p.sap_code AND t.plu=p.plu
             WHERE t.status='processed'
         """).fetchall()
         for row in incomplete_rows:
             score, _filled = _detail_coverage({
-                "composition": row[2], "description": row[3], "nutrition_json": row[4],
-                "attributes_json": row[5], "details_text": row[6]
+                "composition": row[3], "description": row[4], "nutrition_json": row[5],
+                "attributes_json": row[6], "details_text": row[7]
             })
             if score < 100:
                 conn.execute("""UPDATE enrichment_tasks SET status='pending',processed_at=NULL,
-                    note=? WHERE sap_code=? AND plu=?""",
-                    (f"V14: повторное обогащение неполной карточки ({score}%)", row[0], row[1]))
+                    note=? WHERE chain=? AND sap_code=? AND plu=?""",
+                    (f"V14: повторное обогащение неполной карточки ({score}%)", row[0], row[1], row[2]))
         conn.commit()
     finally:
         conn.close()
@@ -342,18 +382,21 @@ def row_dict(row: sqlite3.Row | None):
     return dict(row) if row is not None else None
 
 
-def get_price_changes(conn: sqlite3.Connection, limit: int = 500, direction: str = "all") -> list[dict]:
-    # Compare consecutive observations for the same SAP+PLU.
-    sql = """
+def get_price_changes(conn: sqlite3.Connection, limit: int = 500, direction: str = "all",
+                      chain: str | None = None) -> list[dict]:
+    # Compare consecutive observations for the same chain + SAP + PLU.
+    chain_filter = "WHERE h.chain=?" if chain else ""
+    sql = f"""
     WITH ordered AS (
       SELECT h.*,
-        LAG(current_price) OVER (PARTITION BY sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_current_price,
-        LAG(regular_price) OVER (PARTITION BY sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_regular_price,
-        LAG(promo_price) OVER (PARTITION BY sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_promo_price,
-        LAG(discount_pct) OVER (PARTITION BY sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_discount_pct,
-        LAG(promo_label) OVER (PARTITION BY sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_promo_label,
-        LAG(captured_at) OVER (PARTITION BY sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_captured_at
+        LAG(current_price) OVER (PARTITION BY chain, sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_current_price,
+        LAG(regular_price) OVER (PARTITION BY chain, sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_regular_price,
+        LAG(promo_price) OVER (PARTITION BY chain, sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_promo_price,
+        LAG(discount_pct) OVER (PARTITION BY chain, sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_discount_pct,
+        LAG(promo_label) OVER (PARTITION BY chain, sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_promo_label,
+        LAG(captured_at) OVER (PARTITION BY chain, sap_code, plu ORDER BY captured_at, imported_at, id) AS prev_captured_at
       FROM price_history h
+      {chain_filter}
     ), changed AS (
       SELECT *,
         CASE WHEN current_price IS NOT prev_current_price THEN 1 ELSE 0 END AS c_price,
@@ -368,7 +411,10 @@ def get_price_changes(conn: sqlite3.Connection, limit: int = 500, direction: str
     ORDER BY captured_at DESC, imported_at DESC, id DESC
     LIMIT ?
     """
-    rows = [dict(r) for r in conn.execute(sql, (max(1, min(limit, 2000)),)).fetchall()]
+    params: list = [max(1, min(limit, 2000))]
+    if chain:
+        params.insert(0, chain)
+    rows = [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
     out = []
     for r in rows:
         oldp, newp = r.get("prev_current_price"), r.get("current_price")
@@ -386,7 +432,8 @@ def get_price_changes(conn: sqlite3.Connection, limit: int = 500, direction: str
             continue
         out.append({
             "captured_at": r["captured_at"], "imported_at": r["imported_at"],
-            "previous_captured_at": r["prev_captured_at"], "sap_code": r["sap_code"], "plu": r["plu"],
+            "previous_captured_at": r["prev_captured_at"], "chain": r.get("chain"),
+            "sap_code": r["sap_code"], "plu": r["plu"],
             "name": r["product_name"], "category": r["category"],
             "old_price": oldp, "new_price": newp, "delta": delta, "delta_pct": pct,
             "old_regular": r["prev_regular_price"], "new_regular": r["regular_price"],
@@ -397,7 +444,8 @@ def get_price_changes(conn: sqlite3.Connection, limit: int = 500, direction: str
     return out
 
 
-def dashboard_data() -> dict:
+def dashboard_data(params: dict | None = None) -> dict:
+    chain = request_chain(params or {})
     conn = connect_db()
     try:
         p = conn.execute("""SELECT COUNT(*) products,
@@ -405,20 +453,24 @@ def dashboard_data() -> dict:
             SUM(discount_pct IS NOT NULL) with_discount,
             SUM(image_url IS NOT NULL AND image_url!='') with_image_url,
             SUM(image_file IS NOT NULL AND image_file!='') with_local_image,
-            COUNT(DISTINCT sap_code) sap_count FROM products""").fetchone()
-        h = conn.execute("SELECT COUNT(*) observations, COUNT(DISTINCT source_hash) observed_exports FROM price_history").fetchone()
-        ex = conn.execute("SELECT COUNT(*) exports, MAX(imported_at) last_import, MAX(captured_at) last_capture FROM exports").fetchone()
-        cat = conn.execute("SELECT COUNT(DISTINCT category) FROM product_categories").fetchone()[0]
-        distinct_pages = conn.execute("SELECT COUNT(DISTINCT sap_code||'|'||COALESCE(category,'')||'|'||COALESCE(page_number,'?')) FROM exports").fetchone()[0]
-        changes = get_price_changes(conn, 1000)
+            COUNT(DISTINCT sap_code) sap_count FROM products WHERE chain=?""", (chain,)).fetchone()
+        h = conn.execute("SELECT COUNT(*) observations, COUNT(DISTINCT source_hash) observed_exports FROM price_history WHERE chain=?", (chain,)).fetchone()
+        ex = conn.execute("SELECT COUNT(*) exports, MAX(imported_at) last_import, MAX(captured_at) last_capture FROM exports WHERE chain=?", (chain,)).fetchone()
+        cat = conn.execute("SELECT COUNT(DISTINCT category) FROM product_categories WHERE chain=?", (chain,)).fetchone()[0]
+        distinct_pages = conn.execute("SELECT COUNT(DISTINCT sap_code||'|'||COALESCE(category,'')||'|'||COALESCE(page_number,'?')) FROM exports WHERE chain=?", (chain,)).fetchone()[0]
+        changes = get_price_changes(conn, 1000, chain=chain)
         recent_exports = [dict(r) for r in conn.execute("""
             SELECT file_name,category,sap_code,page_number,product_rows,unique_products,captured_at,imported_at,source_url
-            FROM exports ORDER BY imported_at DESC LIMIT 8
-        """).fetchall()]
-        by_category = category_progress(conn)
-        new_since = conn.execute("SELECT COUNT(*) FROM products WHERE first_imported_at >= datetime('now','-7 days')").fetchone()[0]
+            FROM exports WHERE chain=? ORDER BY imported_at DESC LIMIT 8
+        """, (chain,)).fetchall()]
+        by_category = category_progress(conn, chain)
+        new_since = conn.execute(
+            "SELECT COUNT(*) FROM products WHERE chain=? AND first_imported_at >= datetime('now','-7 days')",
+            (chain,),
+        ).fetchone()[0]
         return {
-            "sap": EXPECTED_SAP, "products": int(p["products"] or 0), "with_price": int(p["with_price"] or 0),
+            "chain": chain, "sap": get_store(chain)["default_sap"],
+            "products": int(p["products"] or 0), "with_price": int(p["with_price"] or 0),
             "with_discount": int(p["with_discount"] or 0), "with_image_url": int(p["with_image_url"] or 0),
             "with_local_image": int(p["with_local_image"] or 0), "sap_count": int(p["sap_count"] or 0),
             "observations": int(h["observations"] or 0), "exports": int(ex["exports"] or 0),
@@ -427,14 +479,14 @@ def dashboard_data() -> dict:
             "changes_count": len(changes), "recent_changes": changes[:8],
             "recent_exports": recent_exports, "category_progress": by_category,
             "new_products_7d": int(new_since or 0),
-            "with_details": int(conn.execute("SELECT COUNT(*) FROM product_details").fetchone()[0]),
-            "favorites": int(conn.execute("SELECT COUNT(*) FROM favorites").fetchone()[0]),
+            "with_details": int(conn.execute("SELECT COUNT(*) FROM product_details WHERE chain=?", (chain,)).fetchone()[0]),
+            "favorites": int(conn.execute("SELECT COUNT(*) FROM favorites WHERE chain=?", (chain,)).fetchone()[0]),
         }
     finally:
         conn.close()
 
 
-def category_progress(conn: sqlite3.Connection) -> list[dict]:
+def category_progress(conn: sqlite3.Connection, chain: str = DEFAULT_CHAIN) -> list[dict]:
     rows = conn.execute("""
       SELECT e.sap_code, COALESCE(e.category,'Не указана') AS category,
              COUNT(*) AS files_count,
@@ -446,10 +498,11 @@ def category_progress(conn: sqlite3.Connection) -> list[dict]:
              SUM(e.product_rows) AS rows_count,
              COUNT(DISTINCT p.plu) AS unique_products
       FROM exports e
-      LEFT JOIN product_categories p ON p.sap_code=e.sap_code AND p.category=e.category
+      LEFT JOIN product_categories p ON p.chain=e.chain AND p.sap_code=e.sap_code AND p.category=e.category
+      WHERE e.chain=?
       GROUP BY e.sap_code, e.category
       ORDER BY e.category COLLATE NOCASE
-    """).fetchall()
+    """, (chain,)).fetchall()
     result = []
     for r in rows:
         pages = sorted({int(x) for x in (r["pages_raw"] or "").split(",") if str(x).isdigit()})
@@ -467,16 +520,20 @@ def category_progress(conn: sqlite3.Connection) -> list[dict]:
         })
     # Merge category checklist manifests (if exported from catalogue landing page).
     known: dict[str, dict] = {}
-    for file in sorted(CATEGORY_DIR.glob("*.json")) if CATEGORY_DIR.exists() else []:
-        try:
-            payload = json.loads(file.read_text(encoding="utf-8-sig"))
-            for c in payload.get("categories", []):
-                name = str(c.get("name") or "").strip()
-                if not name: continue
-                key = name.casefold()
-                known.setdefault(key, {"category": name, "url": c.get("url"), "category_id": c.get("category_id")})
-        except Exception:
+    for folder in store_dirs("categories"):
+        if not folder.exists():
             continue
+        for file in sorted(folder.glob("*.json")):
+            try:
+                payload = json.loads(file.read_text(encoding="utf-8-sig"))
+                for c in payload.get("categories", []):
+                    name = str(c.get("name") or "").strip()
+                    if not name:
+                        continue
+                    key = name.casefold()
+                    known.setdefault(key, {"category": name, "url": c.get("url"), "category_id": c.get("category_id")})
+            except Exception:
+                continue
     have = {x["category"].casefold() for x in result}
     for key, c in known.items():
         if key not in have:
@@ -502,17 +559,20 @@ def products_data(params: dict) -> dict:
         page = max(1, min(int((params.get("page") or ["1"])[0]), 100000))
         limit = max(10, min(int((params.get("limit") or ["30"])[0]), 100))
         where, args = [], []
+        chain = request_chain(params)
+        where.append("p.chain=?")
+        args.append(chain)
         if q:
             like = f"%{q}%"
             where.append("(p.name LIKE ? OR p.plu LIKE ? OR p.product_url LIKE ?)")
             args += [like, like, like]
         if category:
-            where.append("EXISTS (SELECT 1 FROM product_categories pc WHERE pc.sap_code=p.sap_code AND pc.plu=p.plu AND pc.category=?)")
+            where.append("EXISTS (SELECT 1 FROM product_categories pc WHERE pc.chain=p.chain AND pc.sap_code=p.sap_code AND pc.plu=p.plu AND pc.category=?)")
             args.append(category)
         if promo == "yes": where.append("p.discount_pct IS NOT NULL")
         elif promo == "no": where.append("p.discount_pct IS NULL")
         if favorites_only:
-            where.append("EXISTS (SELECT 1 FROM favorites f WHERE f.sap_code=p.sap_code AND f.plu=p.plu)")
+            where.append("EXISTS (SELECT 1 FROM favorites f WHERE f.chain=p.chain AND f.sap_code=p.sap_code AND f.plu=p.plu)")
         sort_map = {
             "name": "p.name COLLATE NOCASE ASC", "price_asc": "p.current_price IS NULL, p.current_price ASC",
             "price_desc": "p.current_price DESC", "discount": "p.discount_pct DESC",
@@ -526,19 +586,23 @@ def products_data(params: dict) -> dict:
           SELECT p.sap_code,p.plu,p.name,p.current_price,p.regular_price,p.promo_price,p.discount_pct,p.promo_label,
                  p.categories,p.image_url,p.image_file,p.product_url,p.first_seen_at,p.last_seen_at,
                  p.first_imported_at,p.last_imported_at,
-                 (SELECT COUNT(*) FROM price_history h WHERE h.sap_code=p.sap_code AND h.plu=p.plu) AS observations,
-                 EXISTS(SELECT 1 FROM favorites f WHERE f.sap_code=p.sap_code AND f.plu=p.plu) AS is_favorite,
-                 EXISTS(SELECT 1 FROM product_details d WHERE d.sap_code=p.sap_code AND d.plu=p.plu) AS has_details
+                 (SELECT COUNT(*) FROM price_history h WHERE h.chain=p.chain AND h.sap_code=p.sap_code AND h.plu=p.plu) AS observations,
+                 EXISTS(SELECT 1 FROM favorites f WHERE f.chain=p.chain AND f.sap_code=p.sap_code AND f.plu=p.plu) AS is_favorite,
+                 EXISTS(SELECT 1 FROM product_details d WHERE d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu) AS has_details
           FROM products p {clause} ORDER BY {order} LIMIT ? OFFSET ?
         """, args + [limit, (page - 1) * limit]).fetchall()
         items = []
         for r in rows:
             x = dict(r)
+            x["chain"] = chain
             x["local_image"] = f"/photos/{Path(str(x['image_file'])).name}" if x.get("image_file") else None
             x["is_favorite"] = bool(x.get("is_favorite"))
             x["has_details"] = bool(x.get("has_details"))
             items.append(x)
-        cats = [r[0] for r in conn.execute("SELECT DISTINCT category FROM product_categories ORDER BY category COLLATE NOCASE")]
+        cats = [r[0] for r in conn.execute(
+            "SELECT DISTINCT category FROM product_categories WHERE chain=? ORDER BY category COLLATE NOCASE",
+            (chain,),
+        )]
         return {"items": items, "total": total, "page": page, "limit": limit,
                 "pages": (total + limit - 1)//limit, "categories": cats, "favorites_only": favorites_only}
     finally:
@@ -546,22 +610,29 @@ def products_data(params: dict) -> dict:
 
 
 def product_detail(params: dict) -> dict:
-    sap = (params.get("sap") or [EXPECTED_SAP])[0]
+    chain = request_chain(params)
+    sap = (params.get("sap") or [get_store(chain)["default_sap"]])[0]
     plu = (params.get("plu") or [""])[0]
     if not plu: raise ValueError("Не указан PLU")
     conn = connect_db()
     try:
-        r = conn.execute("SELECT * FROM products WHERE sap_code=? AND plu=?", (sap, plu)).fetchone()
+        r = conn.execute(
+            "SELECT * FROM products WHERE chain=? AND sap_code=? AND plu=?", (chain, sap, plu)
+        ).fetchone()
         if not r: raise KeyError("Товар не найден")
         product = dict(r)
         product["local_image"] = f"/photos/{Path(str(product['image_file'])).name}" if product.get("image_file") else None
-        product["is_favorite"] = bool(conn.execute("SELECT 1 FROM favorites WHERE sap_code=? AND plu=?", (sap, plu)).fetchone())
+        product["is_favorite"] = bool(conn.execute(
+            "SELECT 1 FROM favorites WHERE chain=? AND sap_code=? AND plu=?", (chain, sap, plu)
+        ).fetchone())
         history = [dict(x) for x in conn.execute("""
             SELECT id,captured_at,imported_at,current_price,regular_price,promo_price,discount_pct,promo_label,
                    category,product_name,image_url,file_name,source_url
-            FROM price_history WHERE sap_code=? AND plu=? ORDER BY captured_at,imported_at,id
-        """, (sap, plu)).fetchall()]
-        d = conn.execute("SELECT * FROM product_details WHERE sap_code=? AND plu=?", (sap, plu)).fetchone()
+            FROM price_history WHERE chain=? AND sap_code=? AND plu=? ORDER BY captured_at,imported_at,id
+        """, (chain, sap, plu)).fetchall()]
+        d = conn.execute(
+            "SELECT * FROM product_details WHERE chain=? AND sap_code=? AND plu=?", (chain, sap, plu)
+        ).fetchone()
         extended = dict(d) if d else None
         if extended:
             for key in ("nutrition_json", "attributes_json"):
@@ -571,8 +642,8 @@ def product_detail(params: dict) -> dict:
         if d:
             for row in conn.execute("""
                 SELECT captured_at, imported_at, file_name, details_json
-                FROM product_detail_history WHERE sap_code=? AND plu=? ORDER BY captured_at DESC, imported_at DESC LIMIT 20
-            """, (sap, plu)).fetchall():
+                FROM product_detail_history WHERE chain=? AND sap_code=? AND plu=? ORDER BY captured_at DESC, imported_at DESC LIMIT 20
+            """, (chain, sap, plu)).fetchall():
                 item = dict(row)
                 try: item["details"] = json.loads(item.pop("details_json"))
                 except Exception: item["details"] = {}
@@ -580,8 +651,8 @@ def product_detail(params: dict) -> dict:
         images = []
         for image_row in conn.execute("""
             SELECT image_url,local_file,image_order,source FROM product_images
-            WHERE sap_code=? AND plu=? ORDER BY image_order,id
-        """, (sap,plu)).fetchall():
+            WHERE chain=? AND sap_code=? AND plu=? ORDER BY image_order,id
+        """, (chain, sap, plu)).fetchall():
             image_item = dict(image_row)
             local = image_item.get("local_file")
             image_item["local_url"] = f"/photos/{Path(str(local)).name}" if local else None
@@ -599,8 +670,10 @@ def pending_exports_data() -> list[dict]:
     """Pending catalogue and product-detail JSON files, deduplicated by SHA-256."""
     import hashlib
     pending = []
-    if EXPORT_DIR.exists():
-        for path in sorted(EXPORT_DIR.rglob("*.json")):
+    for folder in store_dirs("exports"):
+        if not folder.exists():
+            continue
+        for path in sorted(folder.rglob("*.json")):
             try:
                 payload = json.loads(path.read_text(encoding="utf-8-sig"))
                 if not isinstance(payload, dict) or not isinstance(payload.get("products"), list) or not payload["products"]:
@@ -611,14 +684,17 @@ def pending_exports_data() -> list[dict]:
                 finally: conn.close()
                 if not found:
                     pending.append({"name": path.name, "category": payload.get("category"),
-                                    "products": len(payload["products"]), "captured_at": payload.get("captured_at"), "kind":"products"})
+                                    "products": len(payload["products"]), "captured_at": payload.get("captured_at"),
+                                    "chain": chain_from_payload(payload), "kind": "products"})
             except Exception:
                 continue
-    if DETAIL_DIR.exists():
-        for path in sorted(DETAIL_DIR.rglob("*.json")):
+    for folder in store_dirs("details"):
+        if not folder.exists():
+            continue
+        for path in sorted(folder.rglob("*.json")):
             try:
                 raw = path.read_bytes(); payload = json.loads(raw.decode("utf-8-sig"))
-                if not isinstance(payload, dict) or payload.get("source") not in {"5ka.ru-visible-product-details-export", "5ka.ru-visible-product-detail-export"}:
+                if not isinstance(payload, dict) or payload.get("source") not in all_sources():
                     continue
                 digest = hashlib.sha256(raw).hexdigest()
                 conn = connect_db()
@@ -627,7 +703,8 @@ def pending_exports_data() -> list[dict]:
                 if not found:
                     prod = payload.get("product") or {}
                     pending.append({"name":path.name,"category":"Доп. сведения товара",
-                                    "products":1 if prod.get("plu") else 0,"captured_at":payload.get("captured_at"),"kind":"details"})
+                                    "products":1 if prod.get("plu") else 0,"captured_at":payload.get("captured_at"),
+                                    "chain": chain_from_payload(payload), "kind":"details"})
             except Exception:
                 continue
     return pending
@@ -649,19 +726,23 @@ def persist_page_metadata() -> None:
     if not DB_PATH.exists(): return
     conn = connect_db()
     try:
-        for path in EXPORT_DIR.rglob("*.json"):
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8-sig"))
-                pagination = payload.get("pagination") or {}
-                max_page = pagination.get("max_page_linked")
-                visible = pagination.get("visible_page_numbers") or []
-                if max_page is None and not visible: continue
-                import hashlib
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                conn.execute("UPDATE exports SET max_page_linked=?, visible_page_numbers=? WHERE source_hash=?",
-                             (int(max_page) if max_page is not None else None, safe_json(visible), digest))
-            except Exception:
-                continue
+        for folder in store_dirs("exports"):
+            for path in folder.glob("*.json"):
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+                    pagination = payload.get("pagination") or {}
+                    max_page = pagination.get("max_page_linked")
+                    visible = pagination.get("visible_page_numbers") or []
+                    if max_page is None and not visible:
+                        continue
+                    import hashlib
+                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                    conn.execute(
+                        "UPDATE exports SET max_page_linked=?, visible_page_numbers=? WHERE source_hash=?",
+                        (int(max_page) if max_page is not None else None, safe_json(visible), digest),
+                    )
+                except Exception:
+                    continue
         conn.commit()
     finally:
         conn.close()
@@ -719,24 +800,28 @@ def product_gallery_urls(prod: dict) -> list[str]:
 def import_pending_details() -> tuple[int, int, int, list[str]]:
     """Import manual product-page detail snapshots into SQLite, preserving every import."""
     import hashlib
-    if not DETAIL_DIR.exists(): return 0, 0, 0, []
+    detail_dirs = [p for p in store_dirs("details") if p.exists()]
+    if not detail_dirs: return 0, 0, 0, []
     imported_files = imported_products = skipped = 0
     errors: list[str] = []
     conn = connect_db()
     try:
-        for path in sorted(DETAIL_DIR.glob("*.json")):
+        for path in sorted(p for folder in detail_dirs for p in folder.glob("*.json")):
             try:
                 raw = path.read_bytes()
                 digest = hashlib.sha256(raw).hexdigest()
                 if conn.execute("SELECT 1 FROM product_detail_imports WHERE source_hash=?", (digest,)).fetchone():
                     skipped += 1; continue
                 payload = json.loads(raw.decode("utf-8-sig"))
-                if payload.get("source") not in {"5ka.ru-visible-product-details-export", "5ka.ru-visible-product-detail-export"}:
+                if payload.get("source") not in all_sources():
                     continue
-                store = payload.get("store") or {}
-                sap = str(store.get("sap_code") or payload.get("sap_code") or EXPECTED_SAP).strip()
-                if sap != EXPECTED_SAP:
-                    errors.append(f"{path.name}: SAP {sap}, ожидается {EXPECTED_SAP}"); continue
+                chain = chain_from_payload(payload)
+                store = payload.get("store") if isinstance(payload.get("store"), dict) else {}
+                sap = str(store.get("sap_code") or payload.get("sap_code") or get_store(chain)["default_sap"]).strip()
+                try:
+                    validate_store(chain, sap)
+                except ValueError as exc:
+                    errors.append(f"{path.name}: {exc}"); continue
                 captured = str(payload.get("captured_at") or now_iso())
                 imported = now_iso()
                 products = normalize_details_payload(payload)
@@ -762,17 +847,20 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                         "attributes": attrs, "details_text": prod.get("details_text") or prod.get("raw_text"),
                     }
                     details_json = safe_json(detail_snapshot)
-                    old = conn.execute("SELECT first_imported_at FROM product_details WHERE sap_code=? AND plu=?", (sap,plu)).fetchone()
+                    old = conn.execute(
+                        "SELECT first_imported_at FROM product_details WHERE chain=? AND sap_code=? AND plu=?",
+                        (chain, sap, plu),
+                    ).fetchone()
                     first_imported = old[0] if old else imported
                     conn.execute("""
-                        INSERT INTO product_detail_history(sap_code,plu,captured_at,imported_at,source_hash,file_name,details_json)
-                        VALUES(?,?,?,?,?,?,?)
+                        INSERT INTO product_detail_history(chain,sap_code,plu,captured_at,imported_at,source_hash,file_name,details_json)
+                        VALUES(?,?,?,?,?,?,?,?)
                         ON CONFLICT(source_hash,chain,sap_code,plu) DO NOTHING
-                    """, (sap,plu,captured,imported,digest,path.name,details_json))
+                    """, (chain,sap,plu,captured,imported,digest,path.name,details_json))
                     conn.execute("""
-                        INSERT INTO product_details(sap_code,plu,product_name,product_url,image_url,description,composition,
+                        INSERT INTO product_details(chain,sap_code,plu,product_name,product_url,image_url,description,composition,
                             nutrition_json,attributes_json,details_text,first_imported_at,last_imported_at,last_captured_at,last_source_hash)
-                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(chain,sap_code,plu) DO UPDATE SET
                             product_name=COALESCE(excluded.product_name,product_details.product_name),
                             product_url=COALESCE(excluded.product_url,product_details.product_url),
@@ -783,30 +871,30 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                             attributes_json=CASE WHEN excluded.attributes_json!='{}' THEN excluded.attributes_json ELSE product_details.attributes_json END,
                             details_text=COALESCE(excluded.details_text,product_details.details_text),
                             last_imported_at=excluded.last_imported_at,last_captured_at=excluded.last_captured_at,last_source_hash=excluded.last_source_hash
-                    """, (sap,plu,prod.get("name"),prod.get("product_url"),prod.get("image_url"),prod.get("description"),
+                    """, (chain,sap,plu,prod.get("name"),prod.get("product_url"),prod.get("image_url"),prod.get("description"),
                           prod.get("composition"),safe_json(nutrition),safe_json(attrs),prod.get("details_text") or prod.get("raw_text"),
                           first_imported,imported,captured,digest))
                     gallery_urls = product_gallery_urls(prod)
                     for image_idx, image_url in enumerate(gallery_urls[:12]):
                         conn.execute("""
-                            INSERT INTO product_images(sap_code,plu,image_url,image_order,source,first_seen_at,last_seen_at)
-                            VALUES(?,?,?,?,?,?,?)
+                            INSERT INTO product_images(chain,sap_code,plu,image_url,image_order,source,first_seen_at,last_seen_at)
+                            VALUES(?,?,?,?,?,?,?,?)
                             ON CONFLICT(chain,sap_code,plu,image_url) DO UPDATE SET
                                 image_order=MIN(product_images.image_order,excluded.image_order),
                                 last_seen_at=excluded.last_seen_at
-                        """, (sap,plu,image_url,image_idx,"details",captured,captured))
+                        """, (chain,sap,plu,image_url,image_idx,"details",captured,captured))
                     # A successfully imported detail JSON marks this product as processed.
                     task_stamp = now_iso()
                     conn.execute("""
-                        INSERT OR IGNORE INTO enrichment_tasks(sap_code,plu,status,created_at,last_action_at)
-                        VALUES(?,?,'pending',?,?)
-                    """, (sap, plu, task_stamp, task_stamp))
+                        INSERT OR IGNORE INTO enrichment_tasks(chain,sap_code,plu,status,created_at,last_action_at)
+                        VALUES(?,?,?,'pending',?,?)
+                    """, (chain, sap, plu, task_stamp, task_stamp))
                     conn.execute("""
                         UPDATE enrichment_tasks SET status='processed',last_action_at=?,processed_at=?,note=?
-                        WHERE sap_code=? AND plu=?
-                    """, (task_stamp, task_stamp, f"Импортировано из {path.name}", sap, plu))
-                    conn.execute("INSERT INTO enrichment_task_events(sap_code,plu,action,created_at,note) VALUES(?,?,?,?,?)",
-                                 (sap, plu, "processed", task_stamp, path.name))
+                        WHERE chain=? AND sap_code=? AND plu=?
+                    """, (task_stamp, task_stamp, f"Импортировано из {path.name}", chain, sap, plu))
+                    conn.execute("INSERT INTO enrichment_task_events(chain,sap_code,plu,action,created_at,note) VALUES(?,?,?,?,?,?)",
+                                 (chain, sap, plu, "processed", task_stamp, path.name))
                     accepted += 1
                 if accepted == 0:
                     conn.rollback(); errors.append(f"{path.name}: не найден PLU"); continue
@@ -823,42 +911,46 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
     return imported_files, imported_products, skipped, errors
 
 
-def analytics_data() -> dict:
+def analytics_data(params: dict | None = None) -> dict:
+    chain = request_chain(params or {})
     conn = connect_db()
     try:
         daily = [dict(r) for r in conn.execute("""
             SELECT substr(captured_at,1,10) AS day, ROUND(AVG(current_price),2) AS avg_price,
                    COUNT(*) AS observations,
                    ROUND(AVG(CASE WHEN discount_pct IS NOT NULL THEN discount_pct END),1) AS avg_discount
-            FROM price_history WHERE current_price IS NOT NULL
+            FROM price_history WHERE chain=? AND current_price IS NOT NULL
             GROUP BY substr(captured_at,1,10) ORDER BY day DESC LIMIT 30
-        """).fetchall()][::-1]
+        """, (chain,)).fetchall()][::-1]
         top_discounts = [dict(r) for r in conn.execute("""
-            SELECT sap_code,plu,name,current_price,regular_price,discount_pct,categories,image_file,image_url
-            FROM products WHERE discount_pct IS NOT NULL ORDER BY discount_pct DESC,current_price ASC LIMIT 12
-        """).fetchall()]
-        changes = get_price_changes(conn, 2000, "all")
+            SELECT chain,sap_code,plu,name,current_price,regular_price,discount_pct,categories,image_file,image_url
+            FROM products WHERE chain=? AND discount_pct IS NOT NULL ORDER BY discount_pct DESC,current_price ASC LIMIT 12
+        """, (chain,)).fetchall()]
+        changes = get_price_changes(conn, 2000, "all", chain=chain)
         ups = sorted([x for x in changes if x.get("delta") is not None and x["delta"]>0], key=lambda x:(x.get("delta_pct") or 0), reverse=True)[:10]
         downs = sorted([x for x in changes if x.get("delta") is not None and x["delta"]<0], key=lambda x:(x.get("delta_pct") or 0))[:10]
         summary = conn.execute("""
             SELECT COUNT(*) AS products, ROUND(AVG(current_price),2) AS avg_price,
                    ROUND(AVG(discount_pct),1) AS avg_discount, SUM(discount_pct IS NOT NULL) AS discounted
-            FROM products
-        """).fetchone()
-        return {"daily":daily,"top_discounts":top_discounts,"biggest_up":ups,"biggest_down":downs,
-                "summary":dict(summary)}
+            FROM products WHERE chain=?
+        """, (chain,)).fetchone()
+        return {"chain":chain,"daily":daily,"top_discounts":top_discounts,"biggest_up":ups,
+                "biggest_down":downs,"summary":dict(summary)}
     finally: conn.close()
 
 
-def favorites_data() -> list[dict]:
+def favorites_data(params: dict | None = None) -> list[dict]:
+    chain = request_chain(params or {})
     conn = connect_db()
     try:
         rows = conn.execute("""
-            SELECT p.sap_code,p.plu,p.name,p.current_price,p.regular_price,p.discount_pct,p.categories,
+            SELECT p.chain,p.sap_code,p.plu,p.name,p.current_price,p.regular_price,p.discount_pct,p.categories,
                    p.image_url,p.image_file,p.last_seen_at,f.created_at
-            FROM favorites f JOIN products p ON p.sap_code=f.sap_code AND p.plu=f.plu
+            FROM favorites f JOIN products p
+              ON p.chain=f.chain AND p.sap_code=f.sap_code AND p.plu=f.plu
+            WHERE f.chain=?
             ORDER BY f.created_at DESC
-        """).fetchall()
+        """, (chain,)).fetchall()
         items=[]
         for r in rows:
             x=dict(r); x["local_image"] = f"/photos/{Path(str(x['image_file'])).name}" if x.get("image_file") else None
@@ -868,21 +960,24 @@ def favorites_data() -> list[dict]:
 
 
 def set_favorite(data: dict) -> dict:
-    sap = str(data.get("sap_code") or EXPECTED_SAP).strip()
+    chain = request_chain(data)
+    sap = str(data.get("sap_code") or get_store(chain)["default_sap"]).strip()
     plu = str(data.get("plu") or "").strip()
     enabled = bool(data.get("favorite"))
     if not plu: raise ValueError("Не указан PLU")
-    if sap != EXPECTED_SAP: raise ValueError(f"SAP {sap}, ожидается {EXPECTED_SAP}")
+    validate_store(chain, sap)
     conn=connect_db()
     try:
-        exists=conn.execute("SELECT 1 FROM products WHERE sap_code=? AND plu=?",(sap,plu)).fetchone()
+        exists=conn.execute(
+            "SELECT 1 FROM products WHERE chain=? AND sap_code=? AND plu=?", (chain, sap, plu)
+        ).fetchone()
         if not exists: raise KeyError("Товар не найден")
         if enabled:
-            conn.execute("INSERT OR IGNORE INTO favorites(sap_code,plu,created_at) VALUES(?,?,?)",(sap,plu,now_iso()))
+            conn.execute("INSERT OR IGNORE INTO favorites(chain,sap_code,plu,created_at) VALUES(?,?,?,?)",(chain,sap,plu,now_iso()))
         else:
-            conn.execute("DELETE FROM favorites WHERE sap_code=? AND plu=?",(sap,plu))
+            conn.execute("DELETE FROM favorites WHERE chain=? AND sap_code=? AND plu=?",(chain,sap,plu))
         conn.commit()
-        return {"sap_code":sap,"plu":plu,"favorite":enabled}
+        return {"chain":chain,"sap_code":sap,"plu":plu,"favorite":enabled}
     finally: conn.close()
 
 
@@ -953,25 +1048,28 @@ def enrichment_queue(params: dict) -> dict:
         completeness = (params.get("completeness") or ["incomplete"])[0].strip()
         limit = max(10, min(int((params.get("limit") or ["25"])[0]), 100))
         offset = max(0, int((params.get("offset") or ["0"])[0]))
+        chain = request_chain(params)
 
         rows = conn.execute("""
-            SELECT p.sap_code,p.plu,p.name,p.categories,p.product_url,p.current_price,p.image_url,p.image_file,
+            SELECT p.chain,p.sap_code,p.plu,p.name,p.categories,p.product_url,p.current_price,p.image_url,p.image_file,
                    p.first_seen_at,p.last_seen_at,
                    d.composition,d.description,d.nutrition_json,d.attributes_json,d.details_text,
                    COALESCE(t.status,'pending') AS task_status,t.created_at AS task_created_at,
                    t.last_action_at,t.opened_at,t.exported_at,t.processed_at,t.skipped_at,t.note
             FROM products p
-            LEFT JOIN product_details d ON d.sap_code=p.sap_code AND d.plu=p.plu
-            LEFT JOIN enrichment_tasks t ON t.sap_code=p.sap_code AND t.plu=p.plu
+            LEFT JOIN product_details d ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
+            LEFT JOIN enrichment_tasks t ON t.chain=p.chain AND t.sap_code=p.sap_code AND t.plu=p.plu
+            WHERE p.chain=?
             ORDER BY p.name COLLATE NOCASE
-        """).fetchall()
+        """, (chain,)).fetchall()
         category_map: dict[str, set[str]] = {}
-        for cr in conn.execute("SELECT category,plu FROM product_categories ORDER BY category"):
+        for cr in conn.execute("SELECT category,plu FROM product_categories WHERE chain=? ORDER BY category", (chain,)):
             category_map.setdefault(str(cr[1]), set()).add(str(cr[0]))
         category_set = sorted({c for values in category_map.values() for c in values}, key=str.casefold)
         all_items = []
         for raw in rows:
             item = dict(raw)
+            item["chain"] = chain
             score, filled = _detail_coverage(item)
             item["detail_percent"] = score
             item["detail_blocks"] = filled
@@ -1046,10 +1144,11 @@ def enrichment_queue(params: dict) -> dict:
 
 
 def update_enrichment_task(data: dict) -> dict:
-    sap = str(data.get("sap_code") or EXPECTED_SAP).strip()
+    chain = request_chain(data)
+    sap = str(data.get("sap_code") or get_store(chain)["default_sap"]).strip()
     plu = str(data.get("plu") or "").strip()
     action = str(data.get("action") or "").strip().lower()
-    if sap != EXPECTED_SAP: raise ValueError(f"SAP {sap}, ожидается {EXPECTED_SAP}")
+    validate_store(chain, sap)
     if not plu: raise ValueError("Не указан PLU")
     action_map = {"opened": "opened", "exported": "exported", "skip": "skipped", "reset": "pending"}
     if action not in action_map: raise ValueError("Неизвестное действие очереди")
@@ -1057,24 +1156,26 @@ def update_enrichment_task(data: dict) -> dict:
     stamp = now_iso()
     conn = connect_db()
     try:
-        exists = conn.execute("SELECT 1 FROM products WHERE sap_code=? AND plu=?", (sap, plu)).fetchone()
+        exists = conn.execute(
+            "SELECT 1 FROM products WHERE chain=? AND sap_code=? AND plu=?", (chain, sap, plu)
+        ).fetchone()
         if not exists: raise KeyError("Товар не найден")
         conn.execute("""
-            INSERT OR IGNORE INTO enrichment_tasks(sap_code,plu,status,created_at,last_action_at)
-            VALUES(?,?,'pending',?,?)
-        """, (sap, plu, stamp, stamp))
+            INSERT OR IGNORE INTO enrichment_tasks(chain,sap_code,plu,status,created_at,last_action_at)
+            VALUES(?,?,?,'pending',?,?)
+        """, (chain, sap, plu, stamp, stamp))
         updates = ["status=?", "last_action_at=?", "note=?"]
         values: list = [status, stamp, str(data.get("note") or "")[:300]]
         if action == "opened": updates.append("opened_at=COALESCE(opened_at,?)"); values.append(stamp)
         elif action == "exported": updates.append("exported_at=?"); values.append(stamp)
         elif action == "skip": updates.append("skipped_at=?"); values.append(stamp)
         elif action == "reset": updates.extend(["skipped_at=NULL"])
-        values.extend([sap, plu])
-        conn.execute(f"UPDATE enrichment_tasks SET {','.join(updates)} WHERE sap_code=? AND plu=?", values)
-        conn.execute("INSERT INTO enrichment_task_events(sap_code,plu,action,created_at,note) VALUES(?,?,?,?,?)",
-                     (sap, plu, action, stamp, str(data.get("note") or "")[:300]))
+        values.extend([chain, sap, plu])
+        conn.execute(f"UPDATE enrichment_tasks SET {','.join(updates)} WHERE chain=? AND sap_code=? AND plu=?", values)
+        conn.execute("INSERT INTO enrichment_task_events(chain,sap_code,plu,action,created_at,note) VALUES(?,?,?,?,?,?)",
+                     (chain, sap, plu, action, stamp, str(data.get("note") or "")[:300]))
         conn.commit()
-        return {"sap_code": sap, "plu": plu, "status": status, "updated_at": stamp}
+        return {"chain": chain, "sap_code": sap, "plu": plu, "status": status, "updated_at": stamp}
     finally:
         conn.close()
 
@@ -1082,63 +1183,73 @@ def update_enrichment_task(data: dict) -> dict:
 def _batch_row(conn: sqlite3.Connection) -> dict:
     row = conn.execute("SELECT * FROM enrichment_batch_state WHERE id=1").fetchone()
     return dict(row) if row else {"id": 1, "active": 0, "max_items": 25, "delay_seconds": 15,
-                                 "processed_count": 0, "category": None, "current_sap": None,
-                                 "current_plu": None, "current_url": None, "started_at": None,
-                                 "updated_at": None, "paused_reason": None, "last_error": None}
+                                 "processed_count": 0, "category": None, "current_chain": None,
+                                 "current_sap": None, "current_plu": None, "current_url": None,
+                                 "started_at": None, "updated_at": None, "paused_reason": None,
+                                 "last_error": None}
 
 
-def _batch_pick_next(category: str | None = None) -> dict | None:
+def _batch_pick_next(category: str | None = None, chain: str = DEFAULT_CHAIN) -> dict | None:
     params = {"status": ["all"], "completeness": ["incomplete"], "limit": ["100"], "offset": ["0"],
-              "category": [category or ""], "q": [""]}
+              "category": [category or ""], "q": [""], "chain": [chain]}
     data = enrichment_queue(params)
+    prefix = product_url_prefix(chain)
     for item in data.get("items", []):
         url = str(item.get("product_url") or "")
         if item.get("task_status") not in {"pending", "opened", "exported"}:
             continue
-        if url.startswith("https://5ka.ru/product/") and str(item.get("plu") or "").isdigit():
+        if url.startswith(prefix) and str(item.get("plu") or "").isdigit():
             return item
     return None
 
 
 def _batch_reserve_item(item: dict) -> dict:
-    sap, plu = str(item.get("sap_code") or EXPECTED_SAP), str(item.get("plu") or "")
+    chain = normalize_chain(item.get("chain") or DEFAULT_CHAIN)
+    sap = str(item.get("sap_code") or get_store(chain)["default_sap"])
+    plu = str(item.get("plu") or "")
     url = str(item.get("product_url") or "")
     stamp = now_iso()
     conn = connect_db()
     try:
         conn.execute("""
-            INSERT OR IGNORE INTO enrichment_tasks(sap_code,plu,status,created_at,last_action_at)
-            VALUES(?,?,'pending',?,?)
-        """, (sap, plu, stamp, stamp))
+            INSERT OR IGNORE INTO enrichment_tasks(chain,sap_code,plu,status,created_at,last_action_at)
+            VALUES(?,?,?,'pending',?,?)
+        """, (chain, sap, plu, stamp, stamp))
         conn.execute("""
             UPDATE enrichment_tasks SET status='opened', last_action_at=?, opened_at=COALESCE(opened_at,?),
                 note='Пакетный режим V14: карточка открыта в обычном браузере'
-            WHERE sap_code=? AND plu=? AND status!='processed'
-        """, (stamp, stamp, sap, plu))
+            WHERE chain=? AND sap_code=? AND plu=? AND status!='processed'
+        """, (stamp, stamp, chain, sap, plu))
         conn.execute("""
-            UPDATE enrichment_batch_state SET current_sap=?,current_plu=?,current_url=?,updated_at=?,last_error=NULL
+            UPDATE enrichment_batch_state SET current_chain=?,current_sap=?,current_plu=?,current_url=?,updated_at=?,last_error=NULL
             WHERE id=1
-        """, (sap, plu, url, stamp))
+        """, (chain, sap, plu, url, stamp))
         conn.commit()
-        return {"sap_code": sap, "plu": plu, "name": item.get("name"), "url": url}
+        return {"chain": chain, "sap_code": sap, "plu": plu, "name": item.get("name"), "url": url}
     finally:
         conn.close()
 
 
-def batch_status() -> dict:
+def batch_status(chain: str | None = None) -> dict:
     conn = connect_db()
     try:
         state = _batch_row(conn)
-        total = int(conn.execute("SELECT COUNT(*) FROM products WHERE sap_code=?", (EXPECTED_SAP,)).fetchone()[0])
-        done = int(conn.execute("SELECT COUNT(*) FROM enrichment_tasks WHERE sap_code=? AND status='processed'", (EXPECTED_SAP,)).fetchone()[0])
+        active_chain = normalize_chain(chain or state.get("current_chain") or DEFAULT_CHAIN)
+        prefix = product_url_prefix(active_chain)
+        total = int(conn.execute(
+            "SELECT COUNT(*) FROM products WHERE chain=?", (active_chain,)
+        ).fetchone()[0])
+        done = int(conn.execute(
+            "SELECT COUNT(*) FROM enrichment_tasks WHERE chain=? AND status='processed'", (active_chain,)
+        ).fetchone()[0])
         remaining = int(conn.execute("""
             SELECT COUNT(*) FROM products p
-            LEFT JOIN enrichment_tasks t ON t.sap_code=p.sap_code AND t.plu=p.plu
-            WHERE p.sap_code=? AND p.product_url LIKE 'https://5ka.ru/product/%'
+            LEFT JOIN enrichment_tasks t ON t.chain=p.chain AND t.sap_code=p.sap_code AND t.plu=p.plu
+            WHERE p.chain=? AND p.product_url LIKE ?
               AND COALESCE(t.status,'pending') NOT IN ('processed','skipped')
-        """, (EXPECTED_SAP,)).fetchone()[0])
-        state.update({"active": bool(state.get("active")), "total_products": total,
-                      "processed_total": done, "remaining_total": remaining,
+        """, (active_chain, prefix + "%")).fetchone()[0])
+        state.update({"active": bool(state.get("active")), "chain": active_chain,
+                      "total_products": total, "processed_total": done, "remaining_total": remaining,
                       "batch_progress_percent": round(int(state.get("processed_count") or 0) / max(1, int(state.get("max_items") or 1)) * 100, 1)})
         return state
     finally:
@@ -1149,11 +1260,12 @@ def batch_start(data: dict) -> dict:
     limit = max(1, min(int(data.get("limit") or 25), 200))
     delay = max(12, min(int(data.get("delay_seconds") or 15), 60))
     category = str(data.get("category") or "").strip()[:160] or None
+    chain = request_chain(data)
     if not DB_PATH.exists(): raise FileNotFoundError(f"Не найдена база {DB_PATH.name}")
-    current = batch_status()
+    current = batch_status(chain)
     if current.get("active"):
         raise ValueError("Пакетный сбор уже выполняется. Сначала приостановите его.")
-    item = _batch_pick_next(category)
+    item = _batch_pick_next(category, chain)
     if not item:
         raise ValueError("В выбранной категории нет ожидающих товаров с URL карточки. Проверьте фильтр или статус очереди.")
     stamp = now_iso()
@@ -1166,8 +1278,9 @@ def batch_start(data: dict) -> dict:
     finally:
         conn.close()
     reserved = _batch_reserve_item(item)
-    return {"started": True, "limit": limit, "delay_seconds": delay, "category": category, "current": reserved,
-            "first_url": reserved["url"], "status": batch_status()}
+    return {"started": True, "limit": limit, "delay_seconds": delay, "category": category,
+            "chain": chain, "current": reserved,
+            "first_url": reserved["url"], "status": batch_status(chain)}
 
 
 def batch_pause(reason: str = "Остановлено пользователем") -> dict:
@@ -1190,7 +1303,7 @@ def batch_resume() -> dict:
     current_plu = state.get("current_plu")
     starting_next_package = not (current_url and current_plu)
     if starting_next_package:
-        item = _batch_pick_next(state.get("category"))
+        item = _batch_pick_next(state.get("category"), normalize_chain(state.get("current_chain") or DEFAULT_CHAIN))
         if not item:
             raise ValueError("В очереди больше нет ожидающих карточек.")
         current = _batch_reserve_item(item)
@@ -1226,26 +1339,31 @@ def batch_fail(reason: str, captcha: bool = False) -> dict:
 
 def batch_record(payload: dict) -> dict:
     """Accept one product snapshot exported from the visible product page; never call 5ka APIs."""
-    if not isinstance(payload, dict) or payload.get("source") != "5ka.ru-visible-product-details-export":
+    if not isinstance(payload, dict) or payload.get("source") not in all_sources():
         raise ValueError("Неверный формат подробной карточки")
+    chain = chain_from_payload(payload)
     store = payload.get("store") if isinstance(payload.get("store"), dict) else {}
     sap = str(store.get("sap_code") or "").strip()
     products = payload.get("products") if isinstance(payload.get("products"), list) else [payload.get("product")]
     products = [x for x in products if isinstance(x, dict)]
-    if sap != EXPECTED_SAP or not products:
-        raise ValueError(f"Ожидается SAP {EXPECTED_SAP} и блок product")
+    if not products:
+        raise ValueError("В карточке отсутствует блок product")
+    validate_store(chain, sap)
     plu = str(products[0].get("plu") or "").strip()
     if not plu or not plu.isdigit():
         raise ValueError("В карточке отсутствует корректный PLU")
-    state = batch_status()
+    state = batch_status(chain)
     if not state.get("active"):
         raise ValueError("Пакетный сбор приостановлен. Возобновите его в Catalog Desk.")
+    if str(state.get("current_chain") or chain) != chain:
+        raise ValueError(f"Ожидается пакет сети {state.get('current_chain')}, получен {chain}")
     if str(state.get("current_plu") or "") != plu:
         raise ValueError(f"Ожидался PLU {state.get('current_plu')}, получен {plu}. Запись не принята.")
-    DETAIL_DIR.mkdir(parents=True, exist_ok=True)
+    detail_dir = chain_path(chain, "details")
+    detail_dir.mkdir(parents=True, exist_ok=True)
     import uuid
     safe_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = DETAIL_DIR / f"batch_detail_{sap}_{plu}_{safe_stamp}_{uuid.uuid4().hex[:6]}.json"
+    path = detail_dir / f"batch_detail_{chain}_{sap}_{plu}_{safe_stamp}_{uuid.uuid4().hex[:6]}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     imported_files, imported_products, skipped, errors = import_pending_details()
     if imported_products < 1:
@@ -1263,7 +1381,7 @@ def batch_record(payload: dict) -> dict:
         batch_pause("Пакет завершён: достигнут установленный лимит")
         return {"accepted": True, "plu": plu, "processed_count": new_state["processed_count"],
                 "batch_finished": True, "next_url": None, "status": batch_status()}
-    next_item = _batch_pick_next(new_state.get("category"))
+    next_item = _batch_pick_next(new_state.get("category"), chain)
     if not next_item:
         batch_pause("Пакет завершён: ожидающих карточек больше нет")
         return {"accepted": True, "plu": plu, "processed_count": new_state["processed_count"],
@@ -1273,17 +1391,19 @@ def batch_record(payload: dict) -> dict:
             "batch_finished": False, "next_url": reserved["url"], "next": reserved,
             "delay_seconds": int(new_state.get("delay_seconds") or 15), "status": batch_status()}
 
-def _download_catalog_image(url: str, destination: Path) -> bool:
+def _download_catalog_image(url: str, destination: Path, chain: str = DEFAULT_CHAIN) -> bool:
     """Download only product image URLs already present in the local database."""
     from urllib.parse import urlparse
     import requests
     from PIL import Image
+    store = get_store(normalize_chain(chain))
     host = (urlparse(url).hostname or "").lower()
-    if urlparse(url).scheme != "https" or not (host == "catalog-images.x5static.net" or host.endswith(".x5static.net")):
+    allowed = [str(h).lower() for h in store["image_hosts"]]
+    if urlparse(url).scheme != "https" or not any(host == h or host.endswith("." + h) for h in allowed):
         return False
     destination.parent.mkdir(parents=True,exist_ok=True)
     try:
-        response=requests.get(url,timeout=25,headers={"Referer":"https://5ka.ru/","User-Agent":"Mozilla/5.0"})
+        response=requests.get(url,timeout=25,headers={"Referer":store["referer"],"User-Agent":"Mozilla/5.0"})
         response.raise_for_status()
         with Image.open(BytesIO(response.content)) as img:
             if img.mode in ("RGBA","LA","P"):
@@ -1357,42 +1477,46 @@ def run_photo_backfill() -> None:
     try:
         PHOTO_DIR.mkdir(parents=True,exist_ok=True)
         conn=connect_db()
-        rows=conn.execute("SELECT sap_code,plu,image_url,image_file FROM products WHERE image_url IS NOT NULL AND image_url!='' ORDER BY name COLLATE NOCASE").fetchall()
+        rows=conn.execute("SELECT chain,sap_code,plu,image_url,image_file FROM products WHERE image_url IS NOT NULL AND image_url!='' ORDER BY name COLLATE NOCASE").fetchall()
         main_total=len(rows); main_done=0; main_failed=0
         for i,row in enumerate(rows,1):
-            sap,plu,url,local=row
+            chain,sap,plu,url,local=row
+            photo_dir=BASE_DIR / get_store(normalize_chain(chain))["paths"]["photos"]
+            photo_dir.mkdir(parents=True,exist_ok=True)
             local_path=BASE_DIR/str(local) if local else None
             if local_path and local_path.is_file():
                 main_done+=1
             else:
                 safe_sap=re.sub(r"[^A-Za-z0-9_-]","_",str(sap))
                 safe_plu=re.sub(r"[^A-Za-z0-9_-]","_",str(plu))
-                legacy=PHOTO_DIR/f"{safe_plu}.jpg"
-                dest=legacy if legacy.exists() and legacy.stat().st_size>0 else PHOTO_DIR/f"{safe_sap}_{safe_plu}.jpg"
-                if (dest.exists() and dest.stat().st_size>0) or _download_catalog_image(str(url),dest):
+                legacy=photo_dir/f"{safe_plu}.jpg"
+                dest=legacy if legacy.exists() and legacy.stat().st_size>0 else photo_dir/f"{safe_sap}_{safe_plu}.jpg"
+                if (dest.exists() and dest.stat().st_size>0) or _download_catalog_image(str(url),dest,chain):
                     rel=str(dest.relative_to(BASE_DIR))
-                    conn.execute("UPDATE products SET image_file=? WHERE sap_code=? AND plu=?",(rel,sap,plu))
-                    conn.execute("UPDATE product_images SET local_file=? WHERE sap_code=? AND plu=? AND image_url=?",(rel,sap,plu,url))
+                    conn.execute("UPDATE products SET image_file=? WHERE chain=? AND sap_code=? AND plu=?",(rel,chain,sap,plu))
+                    conn.execute("UPDATE product_images SET local_file=? WHERE chain=? AND sap_code=? AND plu=? AND image_url=?",(rel,chain,sap,plu,url))
                     main_done+=1
                 else: main_failed+=1
             if i%25==0:
                 conn.commit(); _job_write(job_id,f"Основные фото: {i}/{main_total}; успешно {main_done}; ошибок {main_failed}.\n")
                 time.sleep(0.15)
         conn.commit()
-        gallery=conn.execute("SELECT id,sap_code,plu,image_url,local_file,image_order FROM product_images ORDER BY sap_code,plu,image_order,id").fetchall()
+        gallery=conn.execute("SELECT id,chain,sap_code,plu,image_url,local_file,image_order FROM product_images ORDER BY chain,sap_code,plu,image_order,id").fetchall()
         gallery_total=len(gallery); gallery_done=0; gallery_failed=0
         for i,row in enumerate(gallery,1):
-            image_id,sap,plu,url,local,order=row
+            image_id,chain,sap,plu,url,local,order=row
+            photo_dir=BASE_DIR / get_store(normalize_chain(chain))["paths"]["photos"]
+            photo_dir.mkdir(parents=True,exist_ok=True)
             local_path=BASE_DIR/str(local) if local else None
             if local_path and local_path.is_file():
                 gallery_done+=1; continue
-            product=conn.execute("SELECT image_url,image_file FROM products WHERE sap_code=? AND plu=?",(sap,plu)).fetchone()
+            product=conn.execute("SELECT image_url,image_file FROM products WHERE chain=? AND sap_code=? AND plu=?",(chain,sap,plu)).fetchone()
             if product and product[0]==url and product[1] and (BASE_DIR/str(product[1])).is_file():
                 rel=str(product[1]); conn.execute("UPDATE product_images SET local_file=? WHERE id=?",(rel,image_id)); gallery_done+=1; continue
             suffix=__import__('hashlib').sha1(str(url).encode('utf-8')).hexdigest()[:8]
             safe_sap=re.sub(r"[^A-Za-z0-9_-]","_",str(sap)); safe_plu=re.sub(r"[^A-Za-z0-9_-]","_",str(plu))
-            dest=PHOTO_DIR/f"{safe_sap}_{safe_plu}_g{suffix}.jpg"
-            if (dest.exists() and dest.stat().st_size>0) or _download_catalog_image(str(url),dest):
+            dest=photo_dir/f"{safe_sap}_{safe_plu}_g{suffix}.jpg"
+            if (dest.exists() and dest.stat().st_size>0) or _download_catalog_image(str(url),dest,chain):
                 conn.execute("UPDATE product_images SET local_file=? WHERE id=?",(str(dest.relative_to(BASE_DIR)),image_id)); gallery_done+=1
             else: gallery_failed+=1
             if i%25==0:
@@ -1423,7 +1547,9 @@ def upload_payload(data: dict) -> dict:
     if not isinstance(files, list) or not files or len(files) > 20:
         raise ValueError("Выберите от 1 до 20 JSON-файлов")
     saved, skipped = [], []
-    EXPORT_DIR.mkdir(parents=True, exist_ok=True); CATEGORY_DIR.mkdir(parents=True, exist_ok=True); DETAIL_DIR.mkdir(parents=True, exist_ok=True)
+    for cfg in STORES.values():
+        for folder in cfg["paths"].values():
+            (BASE_DIR / folder).mkdir(parents=True, exist_ok=True)
     import hashlib
     for item in files:
         name = safe_filename(str(item.get("name") or "upload.json"))
@@ -1434,19 +1560,25 @@ def upload_payload(data: dict) -> dict:
         if len(raw) > MAX_UPLOAD_BYTES: raise ValueError(f"Файл {name} превышает 20 МБ")
         try: payload = json.loads(raw.decode("utf-8-sig"))
         except Exception: raise ValueError(f"Файл {name}: не удалось прочитать JSON")
-        source = payload.get("source") if isinstance(payload, dict) else None
-        if source == "5ka.ru-visible-category-links" and isinstance(payload.get("categories"), list):
-            dest_dir, kind = CATEGORY_DIR, "categories"
-        elif source in {"5ka.ru-visible-product-details-export", "5ka.ru-visible-product-detail-export"} and (payload.get("product") or payload.get("products")):
-            store = payload.get("store") or {}; sap = store.get("sap_code") or payload.get("sap_code") or EXPECTED_SAP
-            if str(sap) != EXPECTED_SAP: raise ValueError(f"{name}: SAP {sap}, ожидается {EXPECTED_SAP}")
-            dest_dir, kind = DETAIL_DIR, "details"
+        source = str(payload.get("source") or "") if isinstance(payload, dict) else ""
+        chain = chain_from_payload(payload)
+        if source.endswith("visible-category-links") and isinstance(payload.get("categories"), list):
+            dest_dir, kind = chain_path(chain, "categories"), "categories"
+        elif source.endswith("visible-product-details-export") or source.endswith("visible-product-detail-export"):
+            if not (payload.get("product") or payload.get("products")):
+                raise ValueError(f"{name}: нет блока product/products")
+            store = payload.get("store") if isinstance(payload.get("store"), dict) else {}
+            sap = str(store.get("sap_code") or payload.get("sap_code") or get_store(chain)["default_sap"]).strip()
+            validate_store(chain, sap)
+            dest_dir, kind = chain_path(chain, "details"), "details"
         elif isinstance(payload, dict) and isinstance(payload.get("products"), list) and payload.get("products"):
-            store = payload.get("store") or {}; sap = store.get("sap_code") or payload.get("store_sap_code")
-            if sap and str(sap) != EXPECTED_SAP: raise ValueError(f"{name}: SAP {sap}, ожидается {EXPECTED_SAP}. Файл не сохранён")
-            dest_dir, kind = EXPORT_DIR, "products"
+            store = payload.get("store") if isinstance(payload.get("store"), dict) else {}
+            sap = store.get("sap_code") or payload.get("store_sap_code")
+            if sap:
+                validate_store(chain, str(sap).strip())
+            dest_dir, kind = chain_path(chain, "exports"), "products"
         else:
-            raise ValueError(f"{name}: это не экспорт товаров, доп. сведений или категорий 5ka.ru")
+            raise ValueError(f"{name}: это не экспорт товаров, доп. сведений или категорий")
         digest = hashlib.sha256(raw).hexdigest(); dest = dest_dir / name
         if dest.exists():
             if hashlib.sha256(dest.read_bytes()).hexdigest() == digest:
@@ -1460,7 +1592,7 @@ def upload_payload(data: dict) -> dict:
     return {"saved": saved, "skipped": skipped}
 
 
-def run_import(download_photos: bool = False) -> None:
+def run_import(download_photos: bool = False, chain: str = DEFAULT_CHAIN) -> None:
     global _JOB
     with _JOB_LOCK:
         if _JOB["running"]: return
@@ -1478,7 +1610,7 @@ def run_import(download_photos: bool = False) -> None:
         with _JOB_LOCK:
             if _JOB["job_id"] == job_id:
                 _JOB["output"] = detail_line + "Запускаю импорт товарных выгрузок…\n"
-        cmd = [sys.executable, str(IMPORTER_PATH)]
+        cmd = [sys.executable, str(IMPORTER_PATH), "--chain", normalize_chain(chain)]
         if not download_photos: cmd.append("--no-photos")
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
@@ -1571,28 +1703,31 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/files/excel": return self._file(BASE_DIR / "pyaterochka_catalog_v9.xlsx", attachment=True)
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
             if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "14.0"})
-            if path == "/api/dashboard": return self._json(200, dashboard_data())
-            if path == "/api/analytics": return self._json(200, analytics_data())
+            if path == "/api/dashboard": return self._json(200, dashboard_data(params))
+            if path == "/api/analytics": return self._json(200, analytics_data(params))
             if path == "/api/products": return self._json(200, products_data(params))
             if path == "/api/product": return self._json(200, product_detail(params))
-            if path == "/api/favorites": return self._json(200, favorites_data())
+            if path == "/api/favorites": return self._json(200, favorites_data(params))
             if path == "/api/changes":
                 conn = connect_db()
                 try:
                     direction = (params.get("direction") or ["all"])[0]
                     limit = int((params.get("limit") or ["300"])[0])
-                    return self._json(200, get_price_changes(conn, limit, direction))
+                    return self._json(200, get_price_changes(conn, limit, direction, chain=request_chain(params)))
                 finally: conn.close()
             if path == "/api/categories":
                 conn = connect_db()
-                try: return self._json(200, category_progress(conn))
+                try: return self._json(200, category_progress(conn, request_chain(params)))
                 finally: conn.close()
             if path == "/api/exports": return self._json(200, exports_data())
             if path == "/api/pending": return self._json(200, pending_exports_data())
             if path == "/api/enrichment/status": return self._json(200, enrichment_status())
             if path == "/api/enrichment/queue": return self._json(200, enrichment_queue(params))
-            if path == "/api/enrichment/overview": return self._json(200, enrichment_queue({"status": ["all"], "completeness": ["all"], "limit": ["10"], "offset": ["0"]}))
-            if path == "/api/batch/status": return self._json(200, batch_status())
+            if path == "/api/enrichment/overview":
+                overview_params = dict(params)
+                overview_params.update({"status": ["all"], "completeness": ["all"], "limit": ["10"], "offset": ["0"]})
+                return self._json(200, enrichment_queue(overview_params))
+            if path == "/api/batch/status": return self._json(200, batch_status(request_chain(params)))
             if path == "/api/job":
                 with _JOB_LOCK: return self._json(200, dict(_JOB))
             if path == "/api/folders":
@@ -1650,9 +1785,10 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/import":
                 if not IMPORTER_PATH.exists(): raise FileNotFoundError(f"Не найден {IMPORTER_PATH.name}")
                 download = bool(data.get("download_photos"))
+                chain = request_chain(data)
                 with _JOB_LOCK:
                     if _JOB["running"]: return self._json(409, {"error": "Импорт уже выполняется"})
-                thread = threading.Thread(target=run_import, args=(download,), daemon=True)
+                thread = threading.Thread(target=run_import, args=(download, chain), daemon=True)
                 thread.start()
                 return self._json(202, {"started": True, "download_photos": download})
             if parsed.path == "/api/photos/backfill":

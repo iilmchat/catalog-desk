@@ -29,11 +29,9 @@ from urllib.parse import parse_qs, urlparse
 
 from catalog_config import (
     DEFAULT_CHAIN,
-    chain_from_source,
-    chain_from_url,
+    chain_from_payload,
     get_store,
     normalize_chain,
-    STORES,
 )
 from catalog_migrations import migrate_v9_to_v10
 
@@ -270,20 +268,8 @@ def walk_products(obj: Any) -> Iterable[dict[str, Any]]:
 
 
 def detect_chain(payload: dict[str, Any] | None, default: str = DEFAULT_CHAIN) -> str:
-    """Определить сеть выгрузки: явное поле → маркер source → домен URL."""
-    if not isinstance(payload, dict):
-        return default
-    if payload.get("chain"):
-        return normalize_chain(payload["chain"])
-    # Домен надёжнее маркера: старые выгрузки Перекрёстка несут source 5ka.ru-...
-    url = str(payload.get("source_url") or "").lower()
-    for chain, cfg in STORES.items():
-        if any(domain in url for domain in cfg["match_domains"]):
-            return chain
-    inferred = chain_from_source(payload.get("source"))
-    if inferred:
-        return inferred
-    return default
+    """Определить сеть выгрузки (общая логика лежит в catalog_config)."""
+    return chain_from_payload(payload) if isinstance(payload, dict) else default
 
 
 def load_json_rows(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
