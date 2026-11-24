@@ -170,6 +170,121 @@ def parse_nutrition_from_details_text(text: str) -> dict:
                 break
     return result
 
+
+def recover_composition_from_text(text: str) -> str | None:
+    """Восстановить состав из свёрнутого текста карточки (CD-003)."""
+    raw = str(text or "")
+    match = re.search(
+        r"\bСостав\s*([\s\S]{3,900}?)"
+        r"(?=\s+(?:Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|"
+        r"Условия хранения|Бренд|Страна производства|Производитель|"
+        r"Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)\b|$)",
+        raw,
+        re.I,
+    )
+    if not match:
+        return None
+    value = re.sub(r"\s+", " ", match.group(1)).strip(" .;:,")
+    return value or None
+
+
+def recover_description_from_text(text: str) -> str | None:
+    """Восстановить описание, если закладка не сохранила поле (CD-005)."""
+    raw = str(text or "")
+    match = re.search(
+        r"\bОписание\s*([\s\S]{10,900}?)"
+        r"(?=\s+(?:Показать полностью|Состав|Пищевая ценность)\b|$)",
+        raw,
+        re.I,
+    )
+    if not match:
+        return None
+    value = re.sub(r"\s+", " ", match.group(1)).strip(" .;:,")
+    return value or None
+
+
+def _to_grams(value: str) -> tuple[float | None, str | None]:
+    match = re.search(r"([0-9]+(?:[.,][0-9]+)?)\s*(кг|г|мл|л)\b", str(value or ""), re.I)
+    if not match:
+        return None, None
+    amount = float(match.group(1).replace(",", "."))
+    unit = match.group(2).lower()
+    factor = {"кг": 1000, "г": 1, "мл": 1, "л": 1000}[unit]
+    return round(amount * factor, 3), "вес" if unit in ("кг", "г") else "объём"
+
+
+def weight_contradictions(name: str | None, attributes: dict) -> dict | None:
+    """Сравнить массу в названии и в характеристиках."""
+    attr_weight = None
+    for key in ("Вес", "Масса нетто", "Объем", "Объём"):
+        if attributes.get(key):
+            attr_weight = _to_grams(str(attributes[key]))
+            break
+    name_weight = None
+    matches = list(re.finditer(r"([0-9]+(?:[.,][0-9]+)?)\s*(кг|г|мл|л)\b", str(name or ""), re.I))
+    if matches:
+        last = matches[-1]
+        name_weight = _to_grams(last.group(0))
+    if not attr_weight or not name_weight or attr_weight[1] != name_weight[1]:
+        return None
+    if not attr_weight[0] or not name_weight[0]:
+        return None
+    diff = abs(attr_weight[0] - name_weight[0]) / max(attr_weight[0], name_weight[0]) * 100
+    if diff <= 5:
+        return None
+    return {
+        "kind": attr_weight[1], "name_value": name_weight[0],
+        "attribute_value": attr_weight[0], "difference_percent": round(diff, 1),
+    }
+
+
+def quality_fields(row: dict) -> dict:
+    """Индикатор полноты карточки: 8 полей + источник + противоречия."""
+    text = str(row.get("details_text") or "")
+    attrs = row.get("attributes", row.get("attributes_json"))
+    if isinstance(attrs, str):
+        try:
+            attrs = json.loads(attrs or "{}")
+        except Exception:
+            attrs = {}
+    attrs = attrs if isinstance(attrs, dict) else {}
+    nutrition = row.get("nutrition", row.get("nutrition_json"))
+    if isinstance(nutrition, str):
+        try:
+            nutrition = json.loads(nutrition or "{}")
+        except Exception:
+            nutrition = {}
+    nutrition = nutrition if isinstance(nutrition, dict) else {}
+    composition = row.get("composition") or recover_composition_from_text(text)
+    description = row.get("description") or recover_description_from_text(text)
+    fields = {
+        "название": bool(row.get("name") or row.get("product_name")),
+        "цена": row.get("current_price") is not None,
+        "фото": bool(row.get("image_url")),
+        "состав": bool(composition),
+        "БЖУ": bool(nutrition),
+        "вес": bool(attrs.get("Вес") or attrs.get("Масса нетто") or attrs.get("Объем") or attrs.get("Объём")),
+        "срок хранения": bool(attrs.get("Срок хранения") or attrs.get("Срок годности")),
+        "бренд": bool(attrs.get("Бренд")),
+    }
+    sources = {}
+    if not row.get("composition") and composition:
+        sources["состав"] = "анализ текста карточки"
+    if not row.get("description") and description:
+        sources["описание"] = "анализ текста карточки"
+    if not row.get("nutrition_json") and nutrition:
+        sources["БЖУ"] = "анализ текста карточки"
+    return {
+        "percent": round(sum(fields.values()) / len(fields) * 100),
+        "fields": fields,
+        "sources": sources,
+        "contradictions": weight_contradictions(
+            str(row.get("name") or row.get("product_name") or ""), attrs
+        ),
+        "disclaimer": "Анализ текста состава, не лабораторная проверка продукта.",
+    }
+
+
 def ensure_ui_columns() -> None:
     """Idempotent UI and enrichment schema migration; never drops existing V9 data."""
     if not DB_PATH.exists():
@@ -184,6 +299,7 @@ def ensure_ui_columns() -> None:
         conn.executescript("""
         CREATE INDEX IF NOT EXISTS idx_exports_category_page ON exports(sap_code, category, page_number);
         CREATE TABLE IF NOT EXISTS product_details (
+            chain TEXT NOT NULL DEFAULT '5ka',
             sap_code TEXT NOT NULL,
             plu TEXT NOT NULL,
             product_name TEXT,
@@ -198,10 +314,11 @@ def ensure_ui_columns() -> None:
             last_imported_at TEXT NOT NULL,
             last_captured_at TEXT NOT NULL,
             last_source_hash TEXT,
-            PRIMARY KEY (sap_code, plu)
+            PRIMARY KEY (chain, sap_code, plu)
         );
         CREATE TABLE IF NOT EXISTS product_detail_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chain TEXT NOT NULL DEFAULT '5ka',
             sap_code TEXT NOT NULL,
             plu TEXT NOT NULL,
             captured_at TEXT NOT NULL,
@@ -209,9 +326,9 @@ def ensure_ui_columns() -> None:
             source_hash TEXT NOT NULL,
             file_name TEXT NOT NULL,
             details_json TEXT NOT NULL,
-            UNIQUE(source_hash, sap_code, plu)
+            UNIQUE(source_hash, chain, sap_code, plu)
         );
-        CREATE INDEX IF NOT EXISTS idx_product_detail_history_time ON product_detail_history(sap_code, plu, captured_at);
+        CREATE INDEX IF NOT EXISTS idx_product_detail_history_time ON product_detail_history(chain, sap_code, plu, captured_at);
         CREATE TABLE IF NOT EXISTS product_detail_imports (
             source_hash TEXT PRIMARY KEY,
             file_name TEXT NOT NULL,
@@ -220,13 +337,15 @@ def ensure_ui_columns() -> None:
             product_count INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS favorites (
+            chain TEXT NOT NULL DEFAULT '5ka',
             sap_code TEXT NOT NULL,
             plu TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            PRIMARY KEY (sap_code, plu)
+            PRIMARY KEY (chain, sap_code, plu)
         );
         CREATE TABLE IF NOT EXISTS product_images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chain TEXT NOT NULL DEFAULT '5ka',
             sap_code TEXT NOT NULL,
             plu TEXT NOT NULL,
             image_url TEXT NOT NULL,
@@ -235,10 +354,11 @@ def ensure_ui_columns() -> None:
             source TEXT NOT NULL DEFAULT 'catalog',
             first_seen_at TEXT,
             last_seen_at TEXT,
-            UNIQUE(sap_code, plu, image_url)
+            UNIQUE(chain, sap_code, plu, image_url)
         );
-        CREATE INDEX IF NOT EXISTS idx_product_images_product ON product_images(sap_code,plu,image_order);
+        CREATE INDEX IF NOT EXISTS idx_product_images_product ON product_images(chain,sap_code,plu,image_order);
         CREATE TABLE IF NOT EXISTS enrichment_tasks (
+            chain TEXT NOT NULL DEFAULT '5ka',
             sap_code TEXT NOT NULL,
             plu TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
@@ -249,18 +369,19 @@ def ensure_ui_columns() -> None:
             processed_at TEXT,
             skipped_at TEXT,
             note TEXT,
-            PRIMARY KEY (sap_code, plu)
+            PRIMARY KEY (chain, sap_code, plu)
         );
         CREATE INDEX IF NOT EXISTS idx_enrichment_tasks_status ON enrichment_tasks(status,last_action_at);
         CREATE TABLE IF NOT EXISTS enrichment_task_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chain TEXT NOT NULL DEFAULT '5ka',
             sap_code TEXT NOT NULL,
             plu TEXT NOT NULL,
             action TEXT NOT NULL,
             created_at TEXT NOT NULL,
             note TEXT
         );
-        CREATE INDEX IF NOT EXISTS idx_enrichment_task_events_product ON enrichment_task_events(sap_code,plu,created_at);
+        CREATE INDEX IF NOT EXISTS idx_enrichment_task_events_product ON enrichment_task_events(chain,sap_code,plu,created_at);
         CREATE TABLE IF NOT EXISTS enrichment_batch_state (
             id INTEGER PRIMARY KEY CHECK(id=1),
             active INTEGER NOT NULL DEFAULT 0,
@@ -364,6 +485,27 @@ def ensure_ui_columns() -> None:
                     (json.dumps(current_nutrition, ensure_ascii=False),
                      json.dumps(current_attrs, ensure_ascii=False), detail_row[0], detail_row[1], detail_row[2])
                 )
+
+        # V15 quality repair: recover composition/description from the saved text.
+        if not conn.execute(
+            "SELECT 1 FROM catalog_ui_meta WHERE meta_key='quality_repair_v15'"
+        ).fetchone():
+            for detail_row in conn.execute(
+                "SELECT chain,sap_code,plu,composition,description,details_text FROM product_details"
+            ).fetchall():
+                text = detail_row[5] or ""
+                composition = detail_row[3] or recover_composition_from_text(text)
+                description = detail_row[4] or recover_description_from_text(text)
+                if composition != detail_row[3] or description != detail_row[4]:
+                    conn.execute(
+                        "UPDATE product_details SET composition=?,description=? "
+                        "WHERE chain=? AND sap_code=? AND plu=?",
+                        (composition, description, detail_row[0], detail_row[1], detail_row[2]),
+                    )
+            conn.execute(
+                "INSERT OR REPLACE INTO catalog_ui_meta(meta_key,meta_value) VALUES('quality_repair_v15',?)",
+                (now_iso(),),
+            )
 
         # Keep detail snapshots consistent with the repaired current card. The raw
         # details_text is preserved; only derived nutrition/attribute fields change.
@@ -692,8 +834,10 @@ def product_detail(params: dict) -> dict:
         if not images and product.get("image_url"):
             images = [{"image_url":product.get("image_url"),"local_file":product.get("image_file"),
                        "local_url":product.get("local_image"),"image_order":0,"source":"catalog"}]
+        quality_input = {**product, **(extended or {})}
         return {"product": product, "history": history, "details": extended,
-                "detail_history": detail_history, "images": images}
+                "detail_history": detail_history, "images": images,
+                "quality": quality_fields(quality_input)}
     finally:
         conn.close()
 
@@ -872,10 +1016,13 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                         attrs = dict(attrs)
                         for nutrient, value in recovered_nutrition.items():
                             attrs[nutrient] = f"{value}{' ккал' if nutrient == 'Ккал' else ' г'}"
+                    text_for_repair = prod.get("details_text") or prod.get("raw_text") or ""
+                    composition = prod.get("composition") or recover_composition_from_text(text_for_repair)
+                    description = prod.get("description") or recover_description_from_text(text_for_repair)
                     detail_snapshot = {
                         "name": prod.get("name"), "product_url": prod.get("product_url"),
-                        "image_url": prod.get("image_url"), "description": prod.get("description"),
-                        "composition": prod.get("composition"), "nutrition": nutrition,
+                        "image_url": prod.get("image_url"), "description": description,
+                        "composition": composition, "nutrition": nutrition,
                         "attributes": attrs, "details_text": prod.get("details_text") or prod.get("raw_text"),
                     }
                     details_json = safe_json(detail_snapshot)
@@ -903,8 +1050,8 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                             attributes_json=CASE WHEN excluded.attributes_json!='{}' THEN excluded.attributes_json ELSE product_details.attributes_json END,
                             details_text=COALESCE(excluded.details_text,product_details.details_text),
                             last_imported_at=excluded.last_imported_at,last_captured_at=excluded.last_captured_at,last_source_hash=excluded.last_source_hash
-                    """, (chain,sap,plu,prod.get("name"),prod.get("product_url"),prod.get("image_url"),prod.get("description"),
-                          prod.get("composition"),safe_json(nutrition),safe_json(attrs),prod.get("details_text") or prod.get("raw_text"),
+                    """, (chain,sap,plu,prod.get("name"),prod.get("product_url"),prod.get("image_url"),description,
+                          composition,safe_json(nutrition),safe_json(attrs),prod.get("details_text") or prod.get("raw_text"),
                           first_imported,imported,captured,digest))
                     gallery_urls = product_gallery_urls(prod)
                     for image_idx, image_url in enumerate(gallery_urls[:12]):
@@ -1106,6 +1253,7 @@ def enrichment_queue(params: dict) -> dict:
             item["detail_percent"] = score
             item["detail_blocks"] = filled
             item["has_details"] = score > 0
+            item["quality"] = quality_fields(item)
             item["task_status"] = item.get("task_status") or "pending"
             item["category_list"] = sorted(category_map.get(str(item["plu"]), set()), key=str.casefold)
             if not item["category_list"] and item.get("categories"):
