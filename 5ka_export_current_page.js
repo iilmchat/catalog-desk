@@ -1,0 +1,141 @@
+/*
+ * 5ka.ru — export of products already rendered in the current browser tab.
+ * User action only: does not call catalog APIs, make extra requests, click products,
+ * solve CAPTCHA, read cookies, or automate navigation.
+ * Save as a bookmarklet; see README_v7_ru.txt.
+ */
+(() => {
+  "use strict";
+
+  const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  const absoluteUrl = (value) => {
+    if (!value) return null;
+    try {
+      const url = new URL(value, location.href);
+      return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+    } catch (_) {
+      return null;
+    }
+  };
+  const safeSlug = (value) => clean(value)
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48) || "category";
+
+  const productLinks = Array.from(document.querySelectorAll('a[href*="/product/"]'));
+  if (!productLinks.length) {
+    alert("На этой странице не найдены ссылки на карточки товаров. Откройте категорию каталога 5ka.ru и повторите экспорт.");
+    return;
+  }
+
+  function getCardRoot(anchor) {
+    let node = anchor;
+    let best = anchor;
+    let bestLength = clean(anchor.innerText).length;
+
+    for (let depth = 0; depth < 7 && node && node.parentElement; depth += 1) {
+      node = node.parentElement;
+      const links = node.querySelectorAll('a[href*="/product/"]');
+      if (links.length > 1) break;
+      const text = clean(node.innerText);
+      if (links.length === 1 && text.length >= bestLength) {
+        best = node;
+        bestLength = text.length;
+      }
+      if (links.length === 1 && text.includes("₽")) {
+        best = node;
+        break;
+      }
+    }
+    return best;
+  }
+
+  const products = [];
+  const seen = new Set();
+
+  for (const anchor of productLinks) {
+    const productUrl = absoluteUrl(anchor.getAttribute("href"));
+    if (!productUrl) continue;
+
+    const match = new URL(productUrl).pathname.match(/--(\d+)(?:\/|$)/);
+    const plu = match ? match[1] : null;
+    if (!plu || seen.has(plu)) continue;
+    seen.add(plu);
+
+    const card = getCardRoot(anchor);
+    const image = card.querySelector("img") || anchor.querySelector("img");
+    const imageUrl = image
+      ? [image.currentSrc, image.src, image.getAttribute("data-src"), image.getAttribute("data-original")]
+          .map(absoluteUrl)
+          .find(Boolean) || null
+      : null;
+
+    const heading = card.querySelector("h1, h2, h3, h4");
+    const title = clean(
+      (image && image.alt) ||
+      (heading && heading.innerText) ||
+      anchor.getAttribute("aria-label") ||
+      anchor.getAttribute("title") ||
+      ""
+    );
+
+    const rawText = clean(card.innerText || anchor.innerText);
+    products.push({
+      plu,
+      name: title || null,
+      product_url: productUrl,
+      image_url: imageUrl,
+      image_alt: image ? clean(image.alt) || null : null,
+      raw_text: rawText,
+    });
+  }
+
+  if (!products.length) {
+    alert("Ссылки на товары найдены, но из них не удалось извлечь PLU. Ничего не сохранено.");
+    return;
+  }
+
+  let store = { sap_code: null, name: null };
+  try {
+    const raw = localStorage.getItem("DeliveryPanelStore");
+    const parsed = raw ? JSON.parse(raw) : null;
+    const selected = parsed && parsed.selectedStore ? parsed.selectedStore : {};
+    store = {
+      sap_code: selected.sapCode ? String(selected.sapCode) : null,
+      name: clean(selected.name || selected.storeName || selected.title) || null,
+    };
+  } catch (_) {
+    // Export remains useful even if the site does not expose a selected store key.
+  }
+
+  const category = clean(document.querySelector("h1")?.innerText || document.title);
+  const payload = {
+    schema_version: 1,
+    source: "5ka.ru-visible-page-export",
+    expected_sap_code_from_previous_test: "35XY",
+    captured_at: new Date().toISOString(),
+    source_url: location.href,
+    category,
+    store,
+    collection_mode: "manual-current-page-dom-only",
+    note: "Экспортированы только карточки товаров, уже отображённые в текущей вкладке. Новые запросы к API не выполнялись.",
+    products,
+  };
+
+  const filename = `5ka_${store.sap_code || "store_unknown"}_${safeSlug(category)}_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const blobUrl = URL.createObjectURL(blob);
+  const download = document.createElement("a");
+  download.href = blobUrl;
+  download.download = filename;
+  document.body.appendChild(download);
+  download.click();
+  download.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+
+  const sapWarning = !store.sap_code
+    ? "ВНИМАНИЕ: SAP не найден — проверьте выбранный адрес доставки."
+    : (store.sap_code !== "35XY" ? `ВНИМАНИЕ: текущий SAP ${store.sap_code}, в прошлом тесте был 35XY.` : "SAP совпадает с прошлым тестом (35XY)." );
+  alert(`Экспортировано товаров: ${products.length}\nКатегория: ${category || "не определена"}\nSAP магазина: ${store.sap_code || "не найден"}\n${sapWarning}\nФайл: ${filename}`);
+})();

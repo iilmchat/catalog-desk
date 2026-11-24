@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#132c20">
+  <title>Пятёрочка — Catalog Desk V14.0</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="brand-mark">5</div><div><strong>Пятёрочка</strong><span>CATALOG DESK <b>V14.0</b></span></div></div>
+    <div class="store-switch"><span class="live-dot"></span><div><small>АКТИВНЫЙ МАГАЗИН</small><strong>SAP 35XY</strong></div><span class="store-check">✓</span></div>
+    <nav class="nav">
+      <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+      <button class="nav-link active" data-view="dashboard"><span class="nav-ico">◫</span>Обзор</button>
+      <button class="nav-link" data-view="products"><span class="nav-ico">▦</span>Каталог <span class="nav-count" id="nav-product-count">—</span></button>
+      <button class="nav-link" data-view="enrichment"><span class="nav-ico">✧</span>Массовое обогащение</button>
+      <button class="nav-link" data-view="analytics"><span class="nav-ico">⌁</span>Аналитика</button>
+      <button class="nav-link" data-view="changes"><span class="nav-ico">↗</span>Изменения цен</button>
+      <button class="nav-link" data-view="favorites"><span class="nav-ico">♡</span>Избранное <span class="nav-count" id="nav-favorite-count">0</span></button>
+      <div class="nav-caption nav-caption-spaced">ДАННЫЕ</div>
+      <button class="nav-link" data-view="collection"><span class="nav-ico">⇧</span>Сбор и импорты</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="sidebar-note"><span>✦</span><div><strong>История цен</strong><p>Каждая новая выгрузка пополняет хронологию наблюдений.</p></div></div><div class="sidebar-version">Локальная база · V14.0</div></div>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar">
+      <button id="mobile-menu" class="mobile-menu" aria-label="Открыть меню">☰</button>
+      <div class="breadcrumbs"><span>Пятёрочка</span><i>/</i><strong id="page-heading">Обзор</strong></div>
+      <div class="top-actions"><span class="connection"><i></i>Локальная база подключена</span><span class="today-chip" id="today-chip">Сегодня</span><button id="refresh-button" class="icon-button" title="Обновить данные">↻</button><button class="primary-button" data-goto="collection">＋ Добавить выгрузку</button></div>
+    </header>
+
+    <section class="view active" id="view-dashboard">
+      <div class="page-intro"><div><div class="eyebrow green">ПАНЕЛЬ УПРАВЛЕНИЯ · SAP 35XY</div><h1>Добро пожаловать</h1><p>Сводка ассортимента, цен, скидок и полноты выгрузок.</p></div><div class="intro-actions"><span class="sync-badge"><i></i>База обновлена <b id="last-sync">—</b></span><button class="outline-button" data-goto="analytics">Открыть аналитику ↗</button></div></div>
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card stat-primary"><div class="stat-label">ТОВАРОВ В БАЗЕ</div><div class="stat-value">—</div><div class="stat-foot">Уникальные SAP + PLU</div><div class="stat-icon">▦</div></div>
+        <div class="stat-card"><div class="stat-label">СЕЙЧАС СО СКИДКОЙ</div><div class="stat-value">—</div><div class="stat-foot">По последнему наблюдению</div><div class="stat-icon">%</div></div>
+        <div class="stat-card"><div class="stat-label">ФОТОГРАФИИ</div><div class="stat-value">—</div><div class="stat-foot">Локально сохранено</div><div class="stat-icon">▧</div></div>
+        <div class="stat-card"><div class="stat-label">ДОП. ХАРАКТЕРИСТИКИ</div><div class="stat-value">—</div><div class="stat-foot">Подробные карточки</div><div class="stat-icon">＋</div></div>
+      </div>
+      <div class="dashboard-grid">
+        <section class="panel panel-category"><div class="panel-head"><div><div class="eyebrow">ПОКРЫТИЕ КАТАЛОГА</div><h2>Собрано по категориям</h2></div><button class="text-button" data-goto="collection">Все категории ↗</button></div><div id="category-bars" class="category-bars"><div class="empty-inline">Загружаем категории…</div></div></section>
+        <section class="panel panel-movers"><div class="panel-head"><div><div class="eyebrow">МОНИТОРИНГ</div><h2>Последние изменения</h2></div><button class="text-button" data-goto="changes">Все изменения ↗</button></div><div id="recent-changes" class="recent-list"><div class="empty-inline">Загружаем…</div></div></section>
+        <section class="panel panel-exports"><div class="panel-head"><div><div class="eyebrow">ПОСЛЕДНЯЯ АКТИВНОСТЬ</div><h2>Импорты</h2></div><button class="text-button" data-goto="collection">Журнал ↗</button></div><div id="recent-exports" class="export-list"><div class="empty-inline">Загружаем…</div></div></section>
+        <section class="panel panel-quick"><div class="quick-icon">✦</div><div><div class="eyebrow">БЫСТРОЕ ДЕЙСТВИЕ</div><h2>Обновить товарную базу</h2><p>Добавьте новые JSON-выгрузки и импортируйте их одной кнопкой. История цен сохранится автоматически.</p><button class="primary-button" data-goto="collection">Перейти к импорту →</button></div></section>
+      </div>
+      <div class="footer-note">Цены онлайн-каталога 5ka.ru для выбранного адреса доставки. Они могут отличаться от цен в физическом магазине.</div>
+    </section>
+
+    <section class="view" id="view-products">
+      <div class="page-intro compact"><div><div class="eyebrow green">КАТАЛОГ SAP 35XY</div><h1>Товары</h1><p>Поиск по названию, PLU, категории и наличию скидки.</p></div><div class="intro-actions"><button class="outline-button" id="clear-filters">Сбросить фильтры</button></div></div>
+      <div class="toolbar panel"><label class="search-box"><span>⌕</span><input id="search-input" type="search" placeholder="Найти товар, бренд или PLU…" autocomplete="off"></label><select id="category-filter"><option value="">Все категории</option></select><select id="promo-filter"><option value="all">Любая цена</option><option value="yes">Только со скидкой</option><option value="no">Без скидки</option></select><select id="sort-filter"><option value="name">По названию</option><option value="price_asc">Сначала дешевле</option><option value="price_desc">Сначала дороже</option><option value="discount">По размеру скидки</option><option value="recent">Недавно обновлённые</option><option value="first">Недавно добавленные</option></select></div>
+      <div class="results-line"><strong id="products-total">0 товаров</strong><span id="products-hint">Загрузка каталога</span></div>
+      <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА</th><th>ОБЫЧНАЯ</th><th>СКИДКА</th><th>ДОПЫ</th><th>НАБЛЮДЕНИЙ</th><th></th></tr></thead><tbody id="products-body"><tr><td colspan="8" class="empty-cell">Загружаем товары…</td></tr></tbody></table></div><div class="pagination"><span id="page-info">Страница 1</span><div><button class="outline-button small" id="prev-page">← Назад</button><button class="outline-button small" id="next-page">Вперёд →</button></div></div></div>
+    </section>
+
+    <section class="view" id="view-analytics">
+      <div class="page-intro compact"><div><div class="eyebrow green">АНАЛИТИКА АССОРТИМЕНТА</div><h1>Аналитика</h1><p>Ценовые тренды, сильные изменения и самые заметные скидки.</p></div><div class="intro-actions"><span class="date-chip">Последние 30 дней наблюдений</span></div></div>
+      <div class="analytics-kpis" id="analytics-kpis"></div>
+      <div class="analytics-grid"><section class="panel analytics-chart-panel"><div class="panel-head"><div><div class="eyebrow">СРЕДНЯЯ ЦЕНА</div><h2>Динамика каталога</h2></div><span class="chart-legend"><i></i>Средняя цена, ₽</span></div><div id="analytics-price-chart" class="big-chart"><div class="empty-inline">Накопление истории начнётся после следующих снимков.</div></div><p class="chart-footnote">Среднее рассчитывается по товарам, наблюдавшимся в соответствующую дату. Состав выборки может меняться.</p></section><section class="panel analytics-chart-panel"><div class="panel-head"><div><div class="eyebrow">СРЕДНЯЯ СКИДКА</div><h2>Динамика скидок</h2></div><span class="chart-legend discount-legend"><i></i>Скидка, %</span></div><div id="analytics-discount-chart" class="big-chart"></div><p class="chart-footnote">Учитываются только товары, у которых в снимке была зафиксирована скидка.</p></section></div>
+      <div class="analytics-grid lower"><section class="panel ranking-panel"><div class="panel-head"><div><div class="eyebrow">РОСТ СТОИМОСТИ</div><h2>Сильнее всего подорожали</h2></div></div><div id="biggest-up" class="ranking-list"><div class="empty-inline">Пока нет сравнений.</div></div></section><section class="panel ranking-panel"><div class="panel-head"><div><div class="eyebrow">СНИЖЕНИЕ СТОИМОСТИ</div><h2>Сильнее всего подешевели</h2></div></div><div id="biggest-down" class="ranking-list"><div class="empty-inline">Пока нет сравнений.</div></div></section><section class="panel ranking-panel discount-ranking"><div class="panel-head"><div><div class="eyebrow">ВЫГОДНЫЕ ПРЕДЛОЖЕНИЯ</div><h2>Наибольшая скидка</h2></div></div><div id="best-discounts" class="ranking-list"><div class="empty-inline">Загрузка…</div></div></section></div>
+    </section>
+
+    <section class="view" id="view-changes">
+      <div class="page-intro compact"><div><div class="eyebrow green">ИСТОРИЯ НАБЛЮДЕНИЙ</div><h1>Изменения цен</h1><p>Сравнение последовательных снимков одного товара.</p></div><div class="intro-actions"><select id="change-direction" class="small-select"><option value="all">Все изменения</option><option value="up">Подорожания</option><option value="down">Удешевления</option></select></div></div>
+      <div class="info-strip"><span>ⓘ</span><div>Изменения появляются после повторной выгрузки того же PLU. Первый снимок служит базой сравнения; каждое наблюдение хранит дату сайта и дату фактического импорта.</div></div>
+      <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ДАТА НАБЛЮДЕНИЯ</th><th>ТОВАР</th><th>PLU</th><th>БЫЛО</th><th>СТАЛО</th><th>РАЗНИЦА</th><th>ИЗМЕНИЛОСЬ</th></tr></thead><tbody id="changes-body"><tr><td colspan="7" class="empty-cell">Загружаем изменения…</td></tr></tbody></table></div></div>
+    </section>
+
+    <section class="view" id="view-favorites">
+      <div class="page-intro compact"><div><div class="eyebrow green">ПЕРСОНАЛЬНЫЙ СПИСОК</div><h1>Избранное</h1><p>Отслеживайте товары, за которыми хотите следить.</p></div><div class="intro-actions"><button class="outline-button" data-goto="products">Найти товары →</button></div></div>
+      <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА СЕЙЧАС</th><th>ОБЫЧНАЯ</th><th>СКИДКА</th><th>ПОСЛЕДНЕЕ НАБЛЮДЕНИЕ</th><th></th></tr></thead><tbody id="favorites-body"><tr><td colspan="7" class="empty-cell">Загружаем избранное…</td></tr></tbody></table></div></div>
+    </section>
+
+    <section class="view" id="view-enrichment">
+      <div class="page-intro compact"><div><div class="eyebrow green">ПОШАГОВАЯ ДОЗАГРУЗКА КАТАЛОГА · SAP 35XY</div><h1>Массовое обогащение</h1><p>Не нужно вручную открывать каждую карточку: после одной установки userscript сам последовательно переходит по товарам пакетами до 200 штук. При проверке сайта останавливается.</p></div><div class="intro-actions"><button class="outline-button" id="mass-refresh">Обновить очередь</button><button class="primary-button" id="mass-open-next">Открыть следующую карточку ↗</button></div></div>
+      <section class="panel batch-panel-v14">
+        <div class="panel-head"><div><div class="eyebrow">ПАКЕТНЫЙ РЕЖИМ V14</div><h2>Обработать товары автоматически по очереди</h2><p class="panel-subtitle">Один запуск обрабатывает до 200 карточек подряд. Для 2 494 товаров это примерно 13 пакетов, а не 2 494 ручных клика. Пауза между страницами настраивается. Читается только видимый DOM; при CAPTCHA пакет останавливается.</p></div><span class="step-badge">AUTO</span></div>
+        <div class="batch-controls-v14">
+          <label>Категория<select id="batch-category"><option value="">Все категории</option></select></label>
+          <label>Товаров за пакет<input id="batch-limit" type="number" min="1" max="200" value="25"></label>
+          <label>Пауза между карточками, сек<input id="batch-delay" type="number" min="12" max="60" value="15"></label>
+          <div class="batch-buttons-v14"><button class="primary-button" id="batch-start">▶ Начать пакет</button><button class="outline-button" id="batch-pause" disabled>Ⅱ Пауза</button><button class="outline-button" id="batch-resume" disabled>↻ Продолжить / следующий пакет</button></div>
+        </div>
+        <div class="batch-progress-v14"><div class="batch-progress-track"><i id="batch-progress-fill"></i></div><div class="batch-progress-meta"><strong id="batch-status-line">Пакетный режим не запущен</strong><span id="batch-progress-text">—</span></div></div>
+        <div class="batch-warning-v14">Для пакетного режима один раз установите userscript из файла <a href="/static/5ka_batch_enrichment_v14.user.js" download>5ka_batch_enrichment_v14.user.js</a> в Tampermonkey или Violentmonkey. Скрипт не обходит CAPTCHA: при проверке останавливает пакет и ждёт ручного подтверждения.</div>
+      </section>
+      <div class="mass-summary-grid" id="mass-summary">
+        <div class="mass-summary-card"><small>ВСЕГО ТОВАРОВ</small><strong>—</strong><span>В базе магазина</span></div>
+        <div class="mass-summary-card"><small>ОБРАБОТАНО</small><strong>—</strong><span>Доп. JSON импортирован</span></div>
+        <div class="mass-summary-card"><small>ОЖИДАЮТ</small><strong>—</strong><span>Ещё не открывались</span></div>
+        <div class="mass-summary-card"><small>ПРОГРЕСС</small><strong>—</strong><span>По отметкам импорта</span></div>
+      </div>
+      <section class="panel mass-category-panel"><div class="panel-head"><div><div class="eyebrow">ЗАПОЛНЕННОСТЬ ПО КАТЕГОРИЯМ</div><h2>Где осталось больше работы</h2></div><span class="subtle-count" id="mass-category-count">—</span></div><div class="mass-category-grid" id="mass-category-grid"><div class="empty-inline">Загружаем категории…</div></div></section>
+      <section class="panel mass-queue-panel"><div class="panel-head"><div><div class="eyebrow">РАБОЧАЯ ОЧЕРЕДЬ</div><h2>Карточки товаров</h2><p class="panel-subtitle">Приоритет — товары без состава, пищевой ценности и характеристик. После импорта JSON статус меняется автоматически.</p></div><span class="subtle-count" id="mass-queue-total">—</span></div>
+        <div class="mass-filters"><label class="mass-search"><span>⌕</span><input id="mass-search" type="search" placeholder="Название, PLU или категория…"></label><select id="mass-category-filter"><option value="">Все категории</option></select><select id="mass-status-filter"><option value="pending">Ожидают</option><option value="opened">Открыты</option><option value="exported">JSON сохранён</option><option value="processed">Обработаны</option><option value="skipped">Пропущены</option><option value="all">Все статусы</option></select><select id="mass-completeness-filter"><option value="incomplete">Не полностью заполнены</option><option value="none">Без доп. сведений</option><option value="partial">Частично заполнены</option><option value="complete">Заполнены на 100%</option><option value="all">Любая заполненность</option></select></div>
+        <div class="mass-legend"><span><i class="dot pending"></i>Ожидает</span><span><i class="dot opened"></i>Открыта</span><span><i class="dot exported"></i>JSON сохранён</span><span><i class="dot processed"></i>Импортировано</span><span><i class="dot skipped"></i>Пропущено</span></div>
+        <div class="table-scroll"><table class="data-table mass-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА</th><th>ЗАПОЛНЕННОСТЬ</th><th>СТАТУС</th><th>ДЕЙСТВИЯ</th></tr></thead><tbody id="mass-queue-body"><tr><td colspan="6" class="empty-cell">Загружаем очередь…</td></tr></tbody></table></div>
+        <div class="queue-foot"><span id="mass-queue-count">—</span><div class="mass-pager"><button class="outline-button small" id="mass-prev">← Назад</button><button class="outline-button small" id="mass-next">Далее →</button></div></div>
+      </section>
+      <section class="panel mass-instructions"><div class="detail-heading"><span class="detail-heading-icon">✓</span><div><small>РАБОЧИЙ ЦИКЛ</small><h3>Как обогащать карточки</h3></div></div><div class="mass-steps"><div><b>1</b><span>Один раз установи userscript V14 в Tampermonkey или Violentmonkey.</span></div><div><b>2</b><span>Выбери категорию, размер пакета и паузу. Нажми «Начать пакет».</span></div><div><b>3</b><span>Обычный браузер по очереди откроет товары, прочитает только видимый DOM и отправит подробности в локальную SQLite-базу.</span></div><div><b>4</b><span>После пакета нажми «Продолжить / следующий пакет». Если появится CAPTCHA, пройди её вручную и затем нажми «Продолжить».</span></div></div><div class="muted-hint">Ручная закладка остаётся как запасной способ для отдельной карточки. Пакетный режим не обходит проверки, не использует скрытые API и не открывает страницы параллельно.</div><button class="outline-button" data-goto="collection">Перейти к загрузке JSON →</button></section>
+    </section>
+
+    <section class="view" id="view-collection">
+      <div class="page-intro compact"><div><div class="eyebrow green">УПРАВЛЕНИЕ ДАННЫМИ</div><h1>Сбор и импорты</h1><p>Загрузка страниц каталога и дополнительных характеристик товара без консоли.</p></div><div class="intro-actions"><a class="outline-button download-link" href="/files/excel">↓ Скачать Excel</a><a class="outline-button download-link" href="/files/csv">↓ Скачать CSV</a><button class="outline-button" id="open-exports-folder">▣ Папка выгрузок</button></div></div>
+      <div class="collection-grid"><section class="panel upload-panel"><div class="panel-head"><div><div class="eyebrow">ШАГ 1 · ЗАГРУЗКА</div><h2>Добавить JSON-выгрузки</h2></div><span class="step-badge">01</span></div><div class="dropzone" id="dropzone"><div class="upload-symbol">⇧</div><strong>Перетащите JSON-файлы сюда</strong><span>Каталог, категории или подробная карточка товара</span><label class="outline-button file-picker">Выбрать JSON<input id="file-input" type="file" accept=".json,application/json" multiple hidden></label><small>До 20 МБ на файл · повторы определяются по содержимому</small></div><div id="upload-result" class="upload-result" hidden></div><div class="upload-actions"><button class="primary-button" id="run-import" disabled>Импортировать выгрузки</button><label class="check-option"><input type="checkbox" id="download-photos">Скачать недостающие фото</label></div><div class="muted-hint">Импорт каталога и доп. карточек. Для уже импортированных товаров фото можно дозагрузить отдельной кнопкой ниже — повторно собирать JSON не нужно.</div><div id="job-card" class="job-card" hidden><div class="job-head"><span class="job-spinner"></span><strong id="job-title">Импорт выполняется</strong><span id="job-status"></span></div><pre id="job-output"></pre></div></section>
+        <section class="panel guide-panel"><div class="panel-head"><div><div class="eyebrow">ШАГ 2 · ЭКСПОРТ</div><h2>Получить данные из 5ka.ru</h2></div><span class="step-badge">02</span></div><div class="bookmark-block"><div class="bookmark-number">A</div><div><strong>Страница категории</strong><p>Откройте нужную страницу каталога и нажмите закладку. Сохраняются только карточки, уже отображённые на странице.</p><a href="/static/5ka_export_current_page_bookmarklet_v14.txt" download>↓ Закладка экспорта товаров V14</a><br><a href="/static/5ka_export_categories_bookmarklet.txt" download>↓ Закладка списка категорий</a></div></div><div class="bookmark-block featured"><div class="bookmark-number">B</div><div><strong>Доп. характеристики товара</strong><p>На странице конкретного товара нажмите вторую закладку. Она сохранит состав, пищевую ценность, вес, срок и условия хранения, бренд, страну и другие видимые характеристики.</p><a href="/static/5ka_export_product_details_bookmarklet_v14.txt" download>↓ Закладка подробной карточки V14 (точная пищевая ценность и галерея)</a></div></div><div class="bookmark-block"><div class="bookmark-number">C</div><div><strong>Пакетное обогащение</strong><p>Установите userscript один раз. Дальше V14 последовательно откроет карточки из очереди, сохранит данные в локальную базу и остановится на CAPTCHA.</p><a href="/static/5ka_batch_enrichment_v14.user.js" download>↓ Userscript пакетного обогащения V14</a></div></div><div class="muted-hint">Ручная закладка работает на открытой странице. Пакетный режим требует Tampermonkey/Violentmonkey и не обходит CAPTCHA.</div></section></div>
+      <section class="panel enrichment-panel"><div class="panel-head"><div><div class="eyebrow">ДОЗАГРУЗКА УЖЕ СОБРАННОГО КАТАЛОГА</div><h2>Фотографии и подробности товаров</h2><p class="panel-subtitle">Отдельные операции — не нужно повторно выгружать все категории.</p></div><button class="outline-button small" id="refresh-enrichment">Обновить счётчики</button></div>
+        <div class="enrichment-stats" id="enrichment-stats"><div class="enrichment-stat"><strong>—</strong><span>Фото не загружено</span></div><div class="enrichment-stat"><strong>—</strong><span>Карточек без доп. сведений</span></div><div class="enrichment-stat"><strong>—</strong><span>Товаров в базе</span></div></div>
+        <div class="enrichment-actions"><div class="enrichment-action"><div><strong>1. Дозагрузка фотографий</strong><p>Скачивает только отсутствующие фото из URL, уже сохранённых в базе. Не меняет цены и историю наблюдений.</p></div><button class="primary-button" id="run-photo-backfill">Дозагрузить фото</button></div><div class="enrichment-action"><div><strong>2. Импорт состава и характеристик</strong><p>Загрузите JSON, полученные закладкой с открытой карточки товара, затем импортируйте их отдельно.</p></div><button class="primary-button" id="run-details-import">Импортировать доп. сведения</button></div></div>
+        <div class="queue-head"><div><strong>Массовое обогащение каталога</strong><small>Полная очередь с фильтрами по категориям, статусам и заполненности находится в отдельном разделе.</small></div><button class="outline-button" data-goto="enrichment">Открыть рабочую очередь →</button></div>
+        <div class="muted-hint">После загрузки подробной JSON-карточки вернитесь в раздел «Массовое обогащение»: товар автоматически получит статус «Обработано».</div>
+        <div class="queue-head"><div><strong>Краткий список карточек без подробных сведений</strong><small>Для быстрого доступа к нескольким товарам.</small></div><input id="detail-queue-search" type="search" placeholder="Поиск по названию или PLU"></div>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>КАТЕГОРИЯ</th><th>ЦЕНА</th><th>ДЕЙСТВИЕ</th></tr></thead><tbody id="detail-queue-body"><tr><td colspan="5" class="empty-cell">Загружаем очередь…</td></tr></tbody></table></div>
+        <div class="queue-foot"><span id="detail-queue-count">—</span><button class="outline-button small" id="detail-queue-more">Показать ещё</button></div>
+        <div class="muted-hint">Порядок дозагрузки характеристик: открыть товар → нажать закладку V14 → сохранить JSON → перетащить JSON в блок «Добавить JSON-выгрузки» выше → нажать «Импортировать доп. сведения». Подробные сведения не извлекаются автоматически из закрытых страниц.</div>
+      </section>
+      <section class="panel coverage-panel"><div class="panel-head"><div><div class="eyebrow">ПОЛНОТА СБОРА</div><h2>Категории и страницы</h2></div><span class="subtle-count" id="coverage-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>КАТЕГОРИЯ</th><th>ТОВАРОВ</th><th>СТРАНИЦЫ</th><th>ПРОПУСКИ*</th><th>ФАЙЛОВ</th><th>ПОСЛЕДНИЙ СНИМОК</th><th>СТАТУС</th></tr></thead><tbody id="coverage-body"><tr><td colspan="7" class="empty-cell">Загружаем категории…</td></tr></tbody></table></div><p class="chart-footnote">* Пропуски оцениваются по номерам ссылок пагинации, видимым в браузере; это не гарантированное общее число страниц.</p></section>
+      <section class="panel exports-panel-full"><div class="panel-head"><div><div class="eyebrow">ЖУРНАЛ</div><h2>Последние выгрузки</h2></div><span class="subtle-count" id="exports-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>ФАЙЛ</th><th>КАТЕГОРИЯ</th><th>СТР.</th><th>ТОВАРОВ</th><th>НАБЛЮДЕНИЕ</th><th>ИМПОРТ</th></tr></thead><tbody id="exports-body"><tr><td colspan="6" class="empty-cell">Загружаем…</td></tr></tbody></table></div></section>
+    </section>
+
+    <footer class="app-footer"><span>Pyaterochka Catalog Desk V14.0</span><span>Python · Pure JavaScript · SQLite · SAP 35XY</span></footer>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="product-modal" hidden><section class="product-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close" aria-label="Закрыть">×</button><div id="product-detail"><div class="empty-cell">Загружаем карточку…</div></div></section></div>
+<div class="toast" id="toast" role="status"></div>
+<script src="/static/app.js" defer></script>
+</body>
+</html>

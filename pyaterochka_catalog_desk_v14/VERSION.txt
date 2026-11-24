@@ -1,0 +1,4 @@
+Pyaterochka Catalog Desk V14.0
+Build: 2026-11-24
+Database: pyaterochka_catalog_v9.sqlite3 (existing database, preserved)
+UI port: 8767

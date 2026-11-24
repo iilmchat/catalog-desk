@@ -1,0 +1,52 @@
+javascript:(() => {
+'use strict';
+const clean = v => String(v ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+const visible = el => { if (!el) return false; const r=el.getBoundingClientRect(), s=getComputedStyle(el); return r.width>0 && r.height>0 && s.display!=='none' && s.visibility!=='hidden' && Number(s.opacity||1)>0; };
+const main = document.querySelector('main,[role="main"]') || document.body;
+const title = main.querySelector('h1') || document.querySelector('h1');
+const name = clean(title?.innerText || document.title.replace(/\s*[-|].*$/,''));
+const pathMatch = location.pathname.match(/--(\d+)(?:\/|$)/);
+if (!pathMatch || !title) { alert('Не удалось определить товар и PLU. Открой полную карточку товара.'); return; }
+const plu = pathMatch[1];
+const sap = clean(prompt('Введите SAP-код выбранного магазина:', '35XY') || '');
+if (!sap) { alert('Экспорт отменён: SAP не указан.'); return; }
+const fullText = String(main.innerText || main.textContent || '');
+const recRe = /(?:^|\n)\s*(?:Вам понравится|Похожие товары|С этим товаром покупают|Рекомендуем|Популярные товары|Вам также понравится)\s*(?:\n|$)/i;
+const recIndex = fullText.search(recRe);
+const productText = recIndex > 0 ? fullText.slice(0, recIndex) : fullText;
+const recHeadings = [...document.querySelectorAll('h1,h2,h3,[role="heading"]')].filter(visible).filter(el => /^(вам понравится|похожие товары|с этим товаром покупают|рекомендуем|популярные товары|вам также понравится)/i.test(clean(el.innerText)));
+const recTop = recHeadings.length ? Math.min(...recHeadings.map(el => el.getBoundingClientRect().top + scrollY)) : Infinity;
+const tokens = v => [...new Set(clean(v).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').split(' ').filter(x => x.length>2 && !['для','из','и','с','со','на','в','по','от','к'].includes(x)))];
+const similarity = (a,b) => { const aa=tokens(a), bb=tokens(b); if(!aa.length||!bb.length)return 0; return aa.filter(x=>bb.includes(x)).length/Math.min(aa.length,bb.length); };
+const imageCandidates = [...main.querySelectorAll('img')].filter(visible).map(img => { const r=img.getBoundingClientRect(); return {url:img.currentSrc||img.src||img.getAttribute('data-src')||img.getAttribute('data-lazy-src'),alt:clean(img.alt||img.getAttribute('aria-label')||''),area:r.width*r.height,width:r.width,height:r.height,y:r.top+scrollY}; })
+.filter(x => x.url && /^https:\/\/catalog-images\.x5static\.net\/product\//i.test(x.url) && x.width>=70 && x.height>=70 && x.y<recTop)
+.sort((a,b)=>b.area-a.area);
+const imageMatches = imageCandidates.filter(x => x.alt && similarity(name,x.alt)>=0.34);
+const galleryCandidates = imageMatches.length ? imageMatches : imageCandidates.filter(x=>!x.alt).slice(0,1);
+const seen = new Set();
+const gallery = galleryCandidates.filter(x => { const k=x.url.split('?')[0]; if(seen.has(k))return false; seen.add(k); return true; })
+.slice(0,12).map((x,i)=>({url:x.url,alt:x.alt||name,position:i+1}));
+const nStart = productText.search(/Пищевая\s+ценность/i);
+let nBlock = nStart>=0 ? productText.slice(nStart,nStart+420) : productText.slice(0,600);
+const cAt=nBlock.search(/\bСостав\b/i); if(cAt>0)nBlock=nBlock.slice(0,cAt);
+const denominator=nBlock.match(/(?:на\s*)?100\s*(?:г|мл)\b/i); if(denominator&&denominator.index!==undefined)nBlock=nBlock.slice(denominator.index+denominator[0].length);
+const nutrition={};
+const nutritionSpecs=[['Белки',/белки/i],['Жиры',/жиры/i],['Углеводы',/углеводы/i],['Ккал',/(?:ккал|калорийность|энергетическая\s+ценность)/i]];
+const firstLabel=/(?:белки|жиры|углеводы|ккал)\b/i.exec(nBlock);const firstValue=/[0-9]+(?:[.,][0-9]+)?/.exec(nBlock);const valueFirst=!!(firstLabel&&firstValue&&firstValue.index<firstLabel.index);
+for (const [key,label] of nutritionSpecs) {
+  const before=new RegExp('([0-9]+(?:[.,][0-9]+)?)\\s*(?:г|g)?\\s*'+label.source+'\\b','i');
+  const after=new RegExp(label.source+'\\s*[:：-]?\\s*([0-9]+(?:[.,][0-9]+)?)','i');
+  const m=valueFirst?(nBlock.match(before)||nBlock.match(after)):(nBlock.match(after)||nBlock.match(before)); if(m) nutrition[key]=m[1].replace(',','.');
+}
+const compMatch=productText.match(/Состав\s*([\s\S]{3,900}?)(?=\n\s*(?:Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)\b|$)/i);
+const composition=compMatch?clean(compMatch[1]):null;
+const labels=['Вес','Масса нетто','Объем','Объём','Срок хранения','Срок годности','Условия хранения','Температура хранения','Бренд','Страна производства','Производитель','Тип продукта','Добавки','Острый','Вид упаковки','Назначение соуса'];
+const attributes={};
+const lines=productText.split(/\r?\n/).map(clean).filter(Boolean);
+for(let i=0;i<lines.length;i++){const key=lines[i].replace(/[:：]$/,'');if(labels.some(x=>x.toLowerCase()===key.toLowerCase())&&lines[i+1])attributes[key]=lines[i+1];const m=lines[i].match(/^([^:：]{2,42})[:：]\s*(.{1,220})$/);if(m&&labels.some(x=>x.toLowerCase()===m[1].trim().toLowerCase()))attributes[m[1].trim()]=m[2].trim();}
+for(const [k,v] of Object.entries(nutrition))attributes[k]=v+(k==='Ккал'?' ккал':' г');
+const payload={schema_version:1,source:'5ka.ru-visible-product-details-export',captured_at:new Date().toISOString(),source_url:location.href,store:{sap_code:sap,name:null},collection_mode:'manual-current-product-dom-only',note:'Только видимые данные открытой карточки товара; рекомендации и похожие товары исключены из фотогалереи. API-запросы к 5ka.ru не выполнялись.',product:{plu,name,product_url:location.href,image_url:gallery[0]?.url||null,image_alt:gallery[0]?.alt||name,image_gallery:gallery,composition,description:null,nutrition,attributes,details_text:clean(productText)}};
+const stamp=new Date().toISOString().replace(/[:.]/g,'-'); const filename=`5ka_detail_${sap}_${plu}_${stamp}.json`;
+const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);
+alert(`Экспортировано: ${name}\nPLU: ${plu}\nФотографий товара: ${gallery.length}\nСостав: ${composition?'да':'не найден'}\nПищевая ценность: ${Object.keys(nutrition).join(', ')||'не найдена'}\nФайл: ${filename}`);
+})();

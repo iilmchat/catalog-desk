@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Локальные настройки и секреты
+.env
+*.env
+*.secret
+
+# Базы данных и журналы SQLite
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.log
+
+# Рабочие данные: выгрузки и фотографии
+5ka_exports/
+5ka_product_details/
+5ka_category_lists/
+photos5ka/
+pr_exports/
+pr_product_details/
+pr_category_lists/
+photospr/
+5ka_*.json
+pyaterochka_*_report.json
+pyaterochka_import_report.json
+
+# Готовые отчёты и экспорты (создаются импортёром)
+*.xlsx
+*.csv
+*.zip
+
+# Редакторы и ОС
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.tmp

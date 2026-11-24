@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10251b">
+  <title>Пятёрочка — товарная база</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">5</div>
+        <div><div class="brand-title">Пятёрочка</div><div class="brand-sub">CATALOG DESK <span>V10</span></div></div>
+      </div>
+      <div class="store-card">
+        <div class="store-pulse"></div>
+        <div><div class="eyebrow">АКТИВНЫЙ МАГАЗИН</div><strong>SAP 35XY</strong></div>
+        <span class="store-state">локально</span>
+      </div>
+      <nav class="nav" aria-label="Основная навигация">
+        <button class="nav-link active" data-view="dashboard"><span class="nav-ico">◫</span>Обзор</button>
+        <button class="nav-link" data-view="products"><span class="nav-ico">▦</span>Товары <span class="nav-count" id="nav-product-count">—</span></button>
+        <button class="nav-link" data-view="changes"><span class="nav-ico">↗</span>Изменения цен</button>
+        <button class="nav-link" data-view="collection"><span class="nav-ico">⇧</span>Сбор данных</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="privacy-note"><span class="lock">▣</span><div><strong>Только на этом ПК</strong><small>Интерфейс не публикуется в сети</small></div></div>
+        <a class="sidebar-file" href="/files/excel">↓ Скачать Excel</a>
+        <a class="sidebar-file" href="/files/csv">↓ Скачать CSV</a>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobile-menu" aria-label="Меню">☰</button>
+        <div class="crumb"><span>Товарная база</span><b>/</b><strong id="page-heading">Обзор</strong></div>
+        <div class="top-actions"><span class="live-dot"></span><span class="live-text">Локальная база</span><button class="icon-button" id="refresh-button" title="Обновить данные">↻</button></div>
+      </header>
+
+      <section class="view active" id="view-dashboard">
+        <div class="page-intro">
+          <div><div class="eyebrow green">МАГАЗИН SAP 35XY</div><h1>Панель управления</h1><p>Ассортимент, цены и история изменений в одном месте.</p></div>
+          <div class="intro-right"><span class="date-chip" id="today-chip">Сегодня</span><button class="primary-button" data-goto="collection">＋ Добавить выгрузку</button></div>
+        </div>
+        <div class="stat-grid" id="stat-grid">
+          <div class="stat-card"><div class="stat-label">Товаров в базе</div><div class="stat-value skeleton">—</div><div class="stat-foot">Уникальные SAP + PLU</div></div>
+          <div class="stat-card"><div class="stat-label">Сейчас со скидкой</div><div class="stat-value skeleton">—</div><div class="stat-foot">По последнему наблюдению</div></div>
+          <div class="stat-card"><div class="stat-label">Фотографии</div><div class="stat-value skeleton">—</div><div class="stat-foot">Локально сохранено</div></div>
+          <div class="stat-card"><div class="stat-label">Снимки цен</div><div class="stat-value skeleton">—</div><div class="stat-foot">Исторические наблюдения</div></div>
+        </div>
+        <div class="dashboard-grid">
+          <section class="panel category-panel">
+            <div class="panel-head"><div><div class="eyebrow">ПОКРЫТИЕ КАТАЛОГА</div><h2>Категории</h2></div><button class="text-button" data-goto="collection">Все данные →</button></div>
+            <div id="category-bars" class="category-bars"><div class="empty-inline">Загружаем категории…</div></div>
+          </section>
+          <section class="panel changes-panel">
+            <div class="panel-head"><div><div class="eyebrow">ДИНАМИКА</div><h2>Последние изменения</h2></div><button class="text-button" data-goto="changes">Все изменения →</button></div>
+            <div id="recent-changes" class="recent-list"><div class="empty-inline">Проверяем историю…</div></div>
+          </section>
+          <section class="panel exports-panel">
+            <div class="panel-head"><div><div class="eyebrow">ПОСЛЕДНЯЯ АКТИВНОСТЬ</div><h2>Импорты</h2></div><button class="text-button" data-goto="collection">История →</button></div>
+            <div id="recent-exports" class="export-list"><div class="empty-inline">Загружаем импорты…</div></div>
+          </section>
+          <section class="panel note-panel">
+            <div class="note-icon">◎</div><div><strong>Как формируется история</strong><p>Новый снимок одной и той же страницы создаёт новое наблюдение цены. Только после повторного наблюдения того же PLU можно увидеть рост, снижение или окончание акции.</p><button class="text-button" data-goto="collection">Перейти к сбору данных →</button></div>
+          </section>
+        </div>
+        <div class="footer-note">Цены онлайн-каталога 5ka.ru для выбранного адреса доставки. Они могут отличаться от цен на полке магазина.</div>
+      </section>
+
+      <section class="view" id="view-products">
+        <div class="page-intro compact"><div><div class="eyebrow green">КАТАЛОГ SAP 35XY</div><h1>Товары</h1><p>Поиск по названию, PLU и фильтрация ассортимента.</p></div><div class="intro-right"><button class="outline-button" id="clear-filters">Сбросить фильтры</button></div></div>
+        <div class="toolbar panel">
+          <label class="search-box"><span>⌕</span><input id="search-input" type="search" placeholder="Найти товар или PLU…" autocomplete="off"></label>
+          <select id="category-filter"><option value="">Все категории</option></select>
+          <select id="promo-filter"><option value="all">Любая цена</option><option value="yes">Только со скидкой</option><option value="no">Без скидки</option></select>
+          <select id="sort-filter"><option value="name">По названию</option><option value="price_asc">Сначала дешевле</option><option value="price_desc">Сначала дороже</option><option value="discount">По размеру скидки</option><option value="recent">Недавно обновлённые</option><option value="first">Недавно добавленные</option></select>
+        </div>
+        <div class="results-line"><strong id="products-total">0 товаров</strong><span id="products-hint">Загрузка каталога</span></div>
+        <div class="panel table-panel">
+          <div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА</th><th>ОБЫЧНАЯ</th><th>СКИДКА</th><th>НАБЛЮДЕНИЙ</th><th>ОБНОВЛЁН</th><th></th></tr></thead><tbody id="products-body"><tr><td colspan="8" class="empty-cell">Загружаем товары…</td></tr></tbody></table></div>
+          <div class="pagination"><span id="page-info">Страница 1</span><div><button class="outline-button small" id="prev-page">← Назад</button><button class="outline-button small" id="next-page">Вперёд →</button></div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-changes">
+        <div class="page-intro compact"><div><div class="eyebrow green">ИСТОРИЯ НАБЛЮДЕНИЙ</div><h1>Изменения цен</h1><p>Сравнение последовательных снимков одного товара.</p></div><div class="intro-right"><select id="change-direction" class="small-select"><option value="all">Все изменения</option><option value="up">Подорожания</option><option value="down">Удешевления</option></select></div></div>
+        <div class="info-strip"><span>ⓘ</span><div>Изменения появятся после повторной выгрузки той же категории и страницы в другой момент времени. Первый снимок служит базой сравнения.</div></div>
+        <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ДАТА НАБЛЮДЕНИЯ</th><th>ТОВАР</th><th>PLU</th><th>БЫЛО</th><th>СТАЛО</th><th>РАЗНИЦА</th><th>ИЗМЕНИЛОСЬ</th></tr></thead><tbody id="changes-body"><tr><td colspan="7" class="empty-cell">Загружаем изменения…</td></tr></tbody></table></div></div>
+      </section>
+
+      <section class="view" id="view-collection">
+        <div class="page-intro compact"><div><div class="eyebrow green">УПРАВЛЕНИЕ ДАННЫМИ</div><h1>Сбор и импорты</h1><p>Загружайте JSON из браузера и обновляйте локальную базу без консоли.</p></div><div class="intro-right"><button class="outline-button" id="open-exports-folder">▣ Папка выгрузок</button></div></div>
+        <div class="collection-grid">
+          <section class="panel upload-panel">
+            <div class="panel-head"><div><div class="eyebrow">ШАГ 1</div><h2>Добавить выгрузку</h2></div><span class="step-badge">01</span></div>
+            <div class="dropzone" id="dropzone"><div class="upload-symbol">⇧</div><strong>Перетащите JSON сюда</strong><span>или выберите файлы на компьютере</span><label class="outline-button file-picker">Выбрать JSON<input id="file-input" type="file" accept=".json,application/json" multiple hidden></label><small>Экспорт карточек товаров или список категорий 5ka.ru · до 20 МБ на файл</small></div>
+            <div id="upload-result" class="upload-result" hidden></div>
+            <div class="upload-actions"><button class="primary-button" id="run-import" disabled>Импортировать выгрузки</button><label class="check-option"><input type="checkbox" id="download-photos">Скачать недостающие фото</label></div>
+            <div class="muted-hint">По умолчанию импорт сохраняет URL фотографий и не скачивает их повторно. Можно включить загрузку недостающих файлов.</div>
+            <div id="job-card" class="job-card" hidden><div class="job-head"><span class="job-spinner"></span><strong id="job-title">Импорт выполняется</strong><span id="job-status"></span></div><pre id="job-output"></pre></div>
+          </section>
+          <section class="panel guide-panel">
+            <div class="panel-head"><div><div class="eyebrow">ШАГ 2</div><h2>Получить данные из браузера</h2></div><span class="step-badge">02</span></div>
+            <ol class="guide-list"><li><b>Откройте 5ka.ru</b><span>Проверьте, что выбран адрес доставки для SAP 35XY.</span></li><li><b>Откройте категорию</b><span>Перейдите на нужную страницу списка товаров.</span></li><li><b>Экспортируйте видимые карточки</b><span>Нажмите закладку «Экспорт карточек 5ka V10».</span></li><li><b>Загрузите JSON сюда</b><span>Выберите файл выше и нажмите «Импортировать выгрузки».</span></li></ol>
+            <div class="guide-downloads"><a href="/static/5ka_export_current_page_bookmarklet_v10.txt" download>↓ Закладка экспорта V10</a><a href="/static/5ka_export_categories_bookmarklet.txt" download>↓ Закладка категорий</a></div>
+            <div class="muted-hint">Экспортируются только карточки, уже отображённые в открытой вкладке. Каждую страницу пагинации нужно открыть и сохранить отдельно. CAPTCHA не обходится.</div>
+          </section>
+        </div>
+        <section class="panel coverage-panel"><div class="panel-head"><div><div class="eyebrow">ПОЛНОТА СБОРА</div><h2>Категории и страницы</h2></div><span class="subtle-count" id="coverage-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>КАТЕГОРИЯ</th><th>ТОВАРОВ</th><th>СТРАНИЦЫ В БАЗЕ</th><th>ФАЙЛОВ</th><th>ПОСЛЕДНИЙ СНИМОК</th><th>СТАТУС</th></tr></thead><tbody id="coverage-body"><tr><td colspan="6" class="empty-cell">Загружаем категории…</td></tr></tbody></table></div></section>
+        <section class="panel exports-panel-full"><div class="panel-head"><div><div class="eyebrow">ЖУРНАЛ</div><h2>Последние выгрузки</h2></div><span class="subtle-count" id="exports-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>ФАЙЛ</th><th>КАТЕГОРИЯ</th><th>СТРАНИЦА</th><th>ТОВАРОВ</th><th>НАБЛЮДЕНИЕ</th><th>ИМПОРТ</th></tr></thead><tbody id="exports-body"><tr><td colspan="6" class="empty-cell">Загружаем…</td></tr></tbody></table></div></section>
+      </section>
+
+      <footer class="app-footer"><span>Pyaterochka Catalog Desk V10</span><span>Локальная база · SAP 35XY</span></footer>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="product-modal" hidden>
+    <section class="product-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal-close" id="modal-close" aria-label="Закрыть">×</button>
+      <div id="product-detail"><div class="empty-cell">Загружаем карточку…</div></div>
+    </section>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

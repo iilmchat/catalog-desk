@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#132c20">
+  <title>Пятёрочка — Catalog Desk V11.1</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="brand-mark">5</div><div><strong>Пятёрочка</strong><span>CATALOG DESK <b>V11.1</b></span></div></div>
+    <div class="store-switch"><span class="live-dot"></span><div><small>АКТИВНЫЙ МАГАЗИН</small><strong>SAP 35XY</strong></div><span class="store-check">✓</span></div>
+    <nav class="nav">
+      <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+      <button class="nav-link active" data-view="dashboard"><span class="nav-ico">◫</span>Обзор</button>
+      <button class="nav-link" data-view="products"><span class="nav-ico">▦</span>Каталог <span class="nav-count" id="nav-product-count">—</span></button>
+      <button class="nav-link" data-view="analytics"><span class="nav-ico">⌁</span>Аналитика</button>
+      <button class="nav-link" data-view="changes"><span class="nav-ico">↗</span>Изменения цен</button>
+      <button class="nav-link" data-view="favorites"><span class="nav-ico">♡</span>Избранное <span class="nav-count" id="nav-favorite-count">0</span></button>
+      <div class="nav-caption nav-caption-spaced">ДАННЫЕ</div>
+      <button class="nav-link" data-view="collection"><span class="nav-ico">⇧</span>Сбор и импорты</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="sidebar-note"><span>✦</span><div><strong>История цен</strong><p>Каждая новая выгрузка пополняет хронологию наблюдений.</p></div></div><div class="sidebar-version">Локальная база · V11.1</div></div>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar">
+      <button id="mobile-menu" class="mobile-menu" aria-label="Открыть меню">☰</button>
+      <div class="breadcrumbs"><span>Пятёрочка</span><i>/</i><strong id="page-heading">Обзор</strong></div>
+      <div class="top-actions"><span class="connection"><i></i>Локальная база подключена</span><span class="today-chip" id="today-chip">Сегодня</span><button id="refresh-button" class="icon-button" title="Обновить данные">↻</button><button class="primary-button" data-goto="collection">＋ Добавить выгрузку</button></div>
+    </header>
+
+    <section class="view active" id="view-dashboard">
+      <div class="page-intro"><div><div class="eyebrow green">ПАНЕЛЬ УПРАВЛЕНИЯ · SAP 35XY</div><h1>Добро пожаловать</h1><p>Сводка ассортимента, цен, скидок и полноты выгрузок.</p></div><div class="intro-actions"><span class="sync-badge"><i></i>База обновлена <b id="last-sync">—</b></span><button class="outline-button" data-goto="analytics">Открыть аналитику ↗</button></div></div>
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card stat-primary"><div class="stat-label">ТОВАРОВ В БАЗЕ</div><div class="stat-value">—</div><div class="stat-foot">Уникальные SAP + PLU</div><div class="stat-icon">▦</div></div>
+        <div class="stat-card"><div class="stat-label">СЕЙЧАС СО СКИДКОЙ</div><div class="stat-value">—</div><div class="stat-foot">По последнему наблюдению</div><div class="stat-icon">%</div></div>
+        <div class="stat-card"><div class="stat-label">ФОТОГРАФИИ</div><div class="stat-value">—</div><div class="stat-foot">Локально сохранено</div><div class="stat-icon">▧</div></div>
+        <div class="stat-card"><div class="stat-label">ДОП. ХАРАКТЕРИСТИКИ</div><div class="stat-value">—</div><div class="stat-foot">Подробные карточки</div><div class="stat-icon">＋</div></div>
+      </div>
+      <div class="dashboard-grid">
+        <section class="panel panel-category"><div class="panel-head"><div><div class="eyebrow">ПОКРЫТИЕ КАТАЛОГА</div><h2>Собрано по категориям</h2></div><button class="text-button" data-goto="collection">Все категории ↗</button></div><div id="category-bars" class="category-bars"><div class="empty-inline">Загружаем категории…</div></div></section>
+        <section class="panel panel-movers"><div class="panel-head"><div><div class="eyebrow">МОНИТОРИНГ</div><h2>Последние изменения</h2></div><button class="text-button" data-goto="changes">Все изменения ↗</button></div><div id="recent-changes" class="recent-list"><div class="empty-inline">Загружаем…</div></div></section>
+        <section class="panel panel-exports"><div class="panel-head"><div><div class="eyebrow">ПОСЛЕДНЯЯ АКТИВНОСТЬ</div><h2>Импорты</h2></div><button class="text-button" data-goto="collection">Журнал ↗</button></div><div id="recent-exports" class="export-list"><div class="empty-inline">Загружаем…</div></div></section>
+        <section class="panel panel-quick"><div class="quick-icon">✦</div><div><div class="eyebrow">БЫСТРОЕ ДЕЙСТВИЕ</div><h2>Обновить товарную базу</h2><p>Добавьте новые JSON-выгрузки и импортируйте их одной кнопкой. История цен сохранится автоматически.</p><button class="primary-button" data-goto="collection">Перейти к импорту →</button></div></section>
+      </div>
+      <div class="footer-note">Цены онлайн-каталога 5ka.ru для выбранного адреса доставки. Они могут отличаться от цен в физическом магазине.</div>
+    </section>
+
+    <section class="view" id="view-products">
+      <div class="page-intro compact"><div><div class="eyebrow green">КАТАЛОГ SAP 35XY</div><h1>Товары</h1><p>Поиск по названию, PLU, категории и наличию скидки.</p></div><div class="intro-actions"><button class="outline-button" id="clear-filters">Сбросить фильтры</button></div></div>
+      <div class="toolbar panel"><label class="search-box"><span>⌕</span><input id="search-input" type="search" placeholder="Найти товар, бренд или PLU…" autocomplete="off"></label><select id="category-filter"><option value="">Все категории</option></select><select id="promo-filter"><option value="all">Любая цена</option><option value="yes">Только со скидкой</option><option value="no">Без скидки</option></select><select id="sort-filter"><option value="name">По названию</option><option value="price_asc">Сначала дешевле</option><option value="price_desc">Сначала дороже</option><option value="discount">По размеру скидки</option><option value="recent">Недавно обновлённые</option><option value="first">Недавно добавленные</option></select></div>
+      <div class="results-line"><strong id="products-total">0 товаров</strong><span id="products-hint">Загрузка каталога</span></div>
+      <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА</th><th>ОБЫЧНАЯ</th><th>СКИДКА</th><th>ДОПЫ</th><th>НАБЛЮДЕНИЙ</th><th></th></tr></thead><tbody id="products-body"><tr><td colspan="8" class="empty-cell">Загружаем товары…</td></tr></tbody></table></div><div class="pagination"><span id="page-info">Страница 1</span><div><button class="outline-button small" id="prev-page">← Назад</button><button class="outline-button small" id="next-page">Вперёд →</button></div></div></div>
+    </section>
+
+    <section class="view" id="view-analytics">
+      <div class="page-intro compact"><div><div class="eyebrow green">АНАЛИТИКА АССОРТИМЕНТА</div><h1>Аналитика</h1><p>Ценовые тренды, сильные изменения и самые заметные скидки.</p></div><div class="intro-actions"><span class="date-chip">Последние 30 дней наблюдений</span></div></div>
+      <div class="analytics-kpis" id="analytics-kpis"></div>
+      <div class="analytics-grid"><section class="panel analytics-chart-panel"><div class="panel-head"><div><div class="eyebrow">СРЕДНЯЯ ЦЕНА</div><h2>Динамика каталога</h2></div><span class="chart-legend"><i></i>Средняя цена, ₽</span></div><div id="analytics-price-chart" class="big-chart"><div class="empty-inline">Накопление истории начнётся после следующих снимков.</div></div><p class="chart-footnote">Среднее рассчитывается по товарам, наблюдавшимся в соответствующую дату. Состав выборки может меняться.</p></section><section class="panel analytics-chart-panel"><div class="panel-head"><div><div class="eyebrow">СРЕДНЯЯ СКИДКА</div><h2>Динамика скидок</h2></div><span class="chart-legend discount-legend"><i></i>Скидка, %</span></div><div id="analytics-discount-chart" class="big-chart"></div><p class="chart-footnote">Учитываются только товары, у которых в снимке была зафиксирована скидка.</p></section></div>
+      <div class="analytics-grid lower"><section class="panel ranking-panel"><div class="panel-head"><div><div class="eyebrow">РОСТ СТОИМОСТИ</div><h2>Сильнее всего подорожали</h2></div></div><div id="biggest-up" class="ranking-list"><div class="empty-inline">Пока нет сравнений.</div></div></section><section class="panel ranking-panel"><div class="panel-head"><div><div class="eyebrow">СНИЖЕНИЕ СТОИМОСТИ</div><h2>Сильнее всего подешевели</h2></div></div><div id="biggest-down" class="ranking-list"><div class="empty-inline">Пока нет сравнений.</div></div></section><section class="panel ranking-panel discount-ranking"><div class="panel-head"><div><div class="eyebrow">ВЫГОДНЫЕ ПРЕДЛОЖЕНИЯ</div><h2>Наибольшая скидка</h2></div></div><div id="best-discounts" class="ranking-list"><div class="empty-inline">Загрузка…</div></div></section></div>
+    </section>
+
+    <section class="view" id="view-changes">
+      <div class="page-intro compact"><div><div class="eyebrow green">ИСТОРИЯ НАБЛЮДЕНИЙ</div><h1>Изменения цен</h1><p>Сравнение последовательных снимков одного товара.</p></div><div class="intro-actions"><select id="change-direction" class="small-select"><option value="all">Все изменения</option><option value="up">Подорожания</option><option value="down">Удешевления</option></select></div></div>
+      <div class="info-strip"><span>ⓘ</span><div>Изменения появляются после повторной выгрузки того же PLU. Первый снимок служит базой сравнения; каждое наблюдение хранит дату сайта и дату фактического импорта.</div></div>
+      <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ДАТА НАБЛЮДЕНИЯ</th><th>ТОВАР</th><th>PLU</th><th>БЫЛО</th><th>СТАЛО</th><th>РАЗНИЦА</th><th>ИЗМЕНИЛОСЬ</th></tr></thead><tbody id="changes-body"><tr><td colspan="7" class="empty-cell">Загружаем изменения…</td></tr></tbody></table></div></div>
+    </section>
+
+    <section class="view" id="view-favorites">
+      <div class="page-intro compact"><div><div class="eyebrow green">ПЕРСОНАЛЬНЫЙ СПИСОК</div><h1>Избранное</h1><p>Отслеживайте товары, за которыми хотите следить.</p></div><div class="intro-actions"><button class="outline-button" data-goto="products">Найти товары →</button></div></div>
+      <div class="panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>ТОВАР</th><th>PLU</th><th>ЦЕНА СЕЙЧАС</th><th>ОБЫЧНАЯ</th><th>СКИДКА</th><th>ПОСЛЕДНЕЕ НАБЛЮДЕНИЕ</th><th></th></tr></thead><tbody id="favorites-body"><tr><td colspan="7" class="empty-cell">Загружаем избранное…</td></tr></tbody></table></div></div>
+    </section>
+
+    <section class="view" id="view-collection">
+      <div class="page-intro compact"><div><div class="eyebrow green">УПРАВЛЕНИЕ ДАННЫМИ</div><h1>Сбор и импорты</h1><p>Загрузка страниц каталога и дополнительных характеристик товара без консоли.</p></div><div class="intro-actions"><a class="outline-button download-link" href="/files/excel">↓ Скачать Excel</a><a class="outline-button download-link" href="/files/csv">↓ Скачать CSV</a><button class="outline-button" id="open-exports-folder">▣ Папка выгрузок</button></div></div>
+      <div class="collection-grid"><section class="panel upload-panel"><div class="panel-head"><div><div class="eyebrow">ШАГ 1 · ЗАГРУЗКА</div><h2>Добавить JSON-выгрузки</h2></div><span class="step-badge">01</span></div><div class="dropzone" id="dropzone"><div class="upload-symbol">⇧</div><strong>Перетащите JSON-файлы сюда</strong><span>Каталог, категории или подробная карточка товара</span><label class="outline-button file-picker">Выбрать JSON<input id="file-input" type="file" accept=".json,application/json" multiple hidden></label><small>До 20 МБ на файл · повторы определяются по содержимому</small></div><div id="upload-result" class="upload-result" hidden></div><div class="upload-actions"><button class="primary-button" id="run-import" disabled>Импортировать выгрузки</button><label class="check-option"><input type="checkbox" id="download-photos">Скачать недостающие фото</label></div><div class="muted-hint">Импорт обновляет историю и характеристики. Локальные фотографии повторно не скачиваются, если флажок выключен.</div><div id="job-card" class="job-card" hidden><div class="job-head"><span class="job-spinner"></span><strong id="job-title">Импорт выполняется</strong><span id="job-status"></span></div><pre id="job-output"></pre></div></section>
+        <section class="panel guide-panel"><div class="panel-head"><div><div class="eyebrow">ШАГ 2 · ЭКСПОРТ</div><h2>Получить данные из 5ka.ru</h2></div><span class="step-badge">02</span></div><div class="bookmark-block"><div class="bookmark-number">A</div><div><strong>Страница категории</strong><p>Откройте нужную страницу каталога и нажмите закладку. Сохраняются только карточки, уже отображённые на странице.</p><a href="/static/5ka_export_current_page_bookmarklet_v11.txt" download>↓ Закладка экспорта товаров V11</a><br><a href="/static/5ka_export_categories_bookmarklet.txt" download>↓ Закладка списка категорий</a></div></div><div class="bookmark-block featured"><div class="bookmark-number">B</div><div><strong>Доп. характеристики товара</strong><p>На странице конкретного товара нажмите вторую закладку. Она сохранит состав, пищевую ценность, вес, срок и условия хранения, бренд, страну и другие видимые характеристики.</p><a href="/static/5ka_export_product_details_bookmarklet_v11.txt" download>↓ Закладка подробной карточки V11</a></div></div><div class="muted-hint">Доп. сведения сейчас экспортируются вручную для выбранных товаров — сайт показывает их на странице товара. Автоматического обхода карточек и CAPTCHA нет.</div></section></div>
+      <section class="panel coverage-panel"><div class="panel-head"><div><div class="eyebrow">ПОЛНОТА СБОРА</div><h2>Категории и страницы</h2></div><span class="subtle-count" id="coverage-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>КАТЕГОРИЯ</th><th>ТОВАРОВ</th><th>СТРАНИЦЫ</th><th>ПРОПУСКИ*</th><th>ФАЙЛОВ</th><th>ПОСЛЕДНИЙ СНИМОК</th><th>СТАТУС</th></tr></thead><tbody id="coverage-body"><tr><td colspan="7" class="empty-cell">Загружаем категории…</td></tr></tbody></table></div><p class="chart-footnote">* Пропуски оцениваются по номерам ссылок пагинации, видимым в браузере; это не гарантированное общее число страниц.</p></section>
+      <section class="panel exports-panel-full"><div class="panel-head"><div><div class="eyebrow">ЖУРНАЛ</div><h2>Последние выгрузки</h2></div><span class="subtle-count" id="exports-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>ФАЙЛ</th><th>КАТЕГОРИЯ</th><th>СТР.</th><th>ТОВАРОВ</th><th>НАБЛЮДЕНИЕ</th><th>ИМПОРТ</th></tr></thead><tbody id="exports-body"><tr><td colspan="6" class="empty-cell">Загружаем…</td></tr></tbody></table></div></section>
+    </section>
+
+    <footer class="app-footer"><span>Pyaterochka Catalog Desk V11.1</span><span>Python · Pure JavaScript · SQLite · SAP 35XY</span></footer>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="product-modal" hidden><section class="product-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" id="modal-close" aria-label="Закрыть">×</button><div id="product-detail"><div class="empty-cell">Загружаем карточку…</div></div></section></div>
+<div class="toast" id="toast" role="status"></div>
+<script src="/static/app.js" defer></script>
+</body>
+</html>
