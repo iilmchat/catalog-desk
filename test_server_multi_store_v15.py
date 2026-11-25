@@ -95,6 +95,70 @@ class MultiStoreBatchTests(unittest.TestCase):
             },
         }
 
+    def test_enrichment_status_is_isolated_by_chain(self):
+        conn = sqlite3.connect(mod.DB_PATH)
+        conn.execute(
+            "UPDATE products SET image_url='https://example.test/main.jpg'"
+        )
+        conn.execute(
+            "UPDATE enrichment_tasks SET status='pending' WHERE chain='5ka'"
+        )
+        conn.execute(
+            "UPDATE enrichment_tasks SET status='opened' WHERE chain='perekrestok'"
+        )
+        conn.executemany(
+            """INSERT INTO product_images(chain,sap_code,plu,image_url,local_file)
+               VALUES(?,?,?,?,NULL)""",
+            [
+                ("5ka", "35XY", "100001", "https://example.test/5ka-gallery.jpg"),
+                ("perekrestok", "XSEO", "100001", "https://example.test/pr-gallery.jpg"),
+            ],
+        )
+        conn.execute(
+            """INSERT INTO product_details(
+                chain,sap_code,plu,product_name,composition,nutrition_json,
+                attributes_json,details_text,first_imported_at,last_imported_at,
+                last_captured_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                "perekrestok", "XSEO", "100001", "Перекрёсток",
+                "Сыры, масло сливочное", "{}", "{}",
+                "Состав: сыры, масло сливочное",
+                "2026-11-25", "2026-11-25", "2026-11-25",
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        five = mod.enrichment_status({"chain": ["5ka"]})
+        cross = mod.enrichment_status({"chain": ["perekrestok"]})
+
+        self.assertEqual(five["chain"], "5ka")
+        self.assertEqual(cross["chain"], "perekrestok")
+
+        self.assertEqual(five["total_products"], 1)
+        self.assertEqual(cross["total_products"], 1)
+        self.assertEqual(five["main_photos_missing"], 1)
+        self.assertEqual(cross["main_photos_missing"], 1)
+
+        self.assertEqual(five["gallery_images_total"], 1)
+        self.assertEqual(cross["gallery_images_total"], 1)
+        self.assertEqual(five["gallery_images_missing"], 1)
+        self.assertEqual(cross["gallery_images_missing"], 1)
+
+        self.assertEqual(five["products_without_details"], 1)
+        self.assertEqual(five["products_with_details"], 0)
+        self.assertEqual(five["average_detail_percent"], 0.0)
+
+        self.assertEqual(cross["products_without_details"], 0)
+        self.assertEqual(cross["products_with_details"], 1)
+        self.assertEqual(cross["average_detail_percent"], 40.0)
+
+        self.assertEqual(five["task_counts"]["pending"], 1)
+        self.assertEqual(five["task_counts"]["opened"], 0)
+        self.assertEqual(cross["task_counts"]["pending"], 0)
+        self.assertEqual(cross["task_counts"]["opened"], 1)
+
     def test_batch_selects_perekrestok_and_imports_under_its_chain(self):
         started = mod.batch_start({"chain": "perekrestok", "limit": 1, "delay_seconds": 12})
         self.assertEqual(started["chain"], "perekrestok")

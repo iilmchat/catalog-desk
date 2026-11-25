@@ -1557,11 +1557,15 @@ def _detail_coverage(row: dict) -> tuple[int, list[str]]:
     return round(len(filled) / 5 * 100), filled
 
 
-def enrichment_status() -> dict:
-    """Counts missing photos and details, plus states of the mass-enrichment queue."""
+def enrichment_status(params: dict | None = None) -> dict:
+    """Counts enrichment status for the selected store chain only."""
+    chain = request_chain(params or {})
     conn = connect_db()
     try:
-        products = conn.execute("SELECT sap_code,plu,image_url,image_file FROM products").fetchall()
+        products = conn.execute(
+            "SELECT sap_code,plu,image_url,image_file FROM products WHERE chain=?",
+            (chain,),
+        ).fetchall()
         missing_main = 0
         for row in products:
             if not row[2]:
@@ -1569,22 +1573,42 @@ def enrichment_status() -> dict:
             local = row[3]
             if not local or not (BASE_DIR / str(local)).is_file():
                 missing_main += 1
-        images = conn.execute("SELECT image_url,local_file FROM product_images WHERE image_url IS NOT NULL AND image_url!=''").fetchall()
+
+        images = conn.execute(
+            """SELECT image_url,local_file FROM product_images
+               WHERE chain=? AND image_url IS NOT NULL AND image_url!=''""",
+            (chain,),
+        ).fetchall()
         missing_gallery = 0
         for row in images:
             local = row[1]
             if not local or not (BASE_DIR / str(local)).is_file():
                 missing_gallery += 1
-        detail_rows = conn.execute("SELECT * FROM product_details").fetchall()
+
+        detail_rows = conn.execute(
+            "SELECT * FROM product_details WHERE chain=?",
+            (chain,),
+        ).fetchall()
         detail_keys = {(str(r["sap_code"]), str(r["plu"])) for r in detail_rows}
-        products_without_details = sum(1 for r in products if (str(r[0]), str(r[1])) not in detail_keys)
+        products_without_details = sum(
+            1 for r in products
+            if (str(r[0]), str(r[1])) not in detail_keys
+        )
+
         counts = {"pending": 0, "opened": 0, "exported": 0, "processed": 0, "skipped": 0}
-        for row in conn.execute("SELECT status,COUNT(*) n FROM enrichment_tasks GROUP BY status"):
-            counts[row[0]] = int(row[1])
+        for row in conn.execute(
+            "SELECT status,COUNT(*) n FROM enrichment_tasks WHERE chain=? GROUP BY status",
+            (chain,),
+        ):
+            counts[row["status"]] = int(row["n"])
+
         scores = [_detail_coverage(dict(r))[0] for r in detail_rows]
         return {
-            "total_products": len(products), "main_photos_missing": missing_main,
-            "gallery_images_total": len(images), "gallery_images_missing": missing_gallery,
+            "chain": chain,
+            "total_products": len(products),
+            "main_photos_missing": missing_main,
+            "gallery_images_total": len(images),
+            "gallery_images_missing": missing_gallery,
             "products_with_details": sum(1 for x in scores if x > 0),
             "products_without_details": products_without_details,
             "products_with_empty_details": sum(1 for x in scores if x == 0),
@@ -2287,7 +2311,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static(unquote(path[len("/static/"):]))
             if path.startswith("/photos/"):
                 name = Path(unquote(path[len("/photos/"):])).name
-                return self._file(PHOTO_DIR / name)
+                photo_path = PHOTO_DIR / name
+                for photo_dir in store_dirs("photos"):
+                    candidate = photo_dir / name
+                    if candidate.is_file():
+                        photo_path = candidate
+                        break
+                return self._file(photo_path)
             if path == "/files/excel": return self._file(BASE_DIR / "pyaterochka_catalog_v9.xlsx", attachment=True)
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
             if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "15.1-dev", "chains": list(STORES)})
@@ -2317,7 +2347,7 @@ class Handler(BaseHTTPRequestHandler):
                 finally: conn.close()
             if path == "/api/exports": return self._json(200, exports_data())
             if path == "/api/pending": return self._json(200, pending_exports_data())
-            if path == "/api/enrichment/status": return self._json(200, enrichment_status())
+            if path == "/api/enrichment/status": return self._json(200, enrichment_status(params))
             if path == "/api/enrichment/queue": return self._json(200, enrichment_queue(params))
             if path == "/api/enrichment/overview":
                 overview_params = dict(params)
