@@ -35,6 +35,7 @@ from catalog_config import (
     normalize_chain,
     STORES,
     product_url_prefix,
+    validate_chain_url,
 )
 from catalog_migrations import backup_before_v15, migrate_v9_to_v10
 
@@ -748,6 +749,33 @@ def ensure_ui_columns() -> None:
         state_columns = {r[1] for r in conn.execute("PRAGMA table_info(enrichment_batch_state)")}
         if "current_chain" not in state_columns:
             conn.execute("ALTER TABLE enrichment_batch_state ADD COLUMN current_chain TEXT")
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS enrichment_batch_states (
+            chain TEXT PRIMARY KEY,
+            active INTEGER NOT NULL DEFAULT 0,
+            max_items INTEGER NOT NULL DEFAULT 25,
+            delay_seconds INTEGER NOT NULL DEFAULT 15,
+            processed_count INTEGER NOT NULL DEFAULT 0,
+            category TEXT,
+            current_sap TEXT,
+            current_plu TEXT,
+            current_url TEXT,
+            started_at TEXT,
+            updated_at TEXT,
+            paused_reason TEXT,
+            last_error TEXT
+        );
+        """)
+        conn.execute("""
+            INSERT OR IGNORE INTO enrichment_batch_states(
+                chain,active,max_items,delay_seconds,processed_count,category,
+                current_sap,current_plu,current_url,started_at,updated_at,paused_reason,last_error
+            )
+            SELECT COALESCE(NULLIF(current_chain,''),'5ka'),active,max_items,delay_seconds,
+                   processed_count,category,current_sap,current_plu,current_url,
+                   started_at,updated_at,paused_reason,last_error
+            FROM enrichment_batch_state WHERE id=1
+        """)
         # One task per product. Existing task status is never overwritten on startup.
         stamp = now_iso()
         conn.execute("""
@@ -1331,6 +1359,7 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                 if payload.get("source") not in all_sources():
                     continue
                 chain = chain_from_payload(payload)
+                validate_chain_url(chain, payload.get("source_url"))
                 store = payload.get("store") if isinstance(payload.get("store"), dict) else {}
                 sap = str(store.get("sap_code") or payload.get("sap_code") or get_store(chain)["default_sap"]).strip()
                 try:
@@ -1345,6 +1374,7 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                 conn.execute("BEGIN")
                 accepted = 0
                 for prod in products:
+                    validate_chain_url(chain, prod.get("product_url"))
                     plu = str(prod.get("plu") or "").strip()
                     if not plu: continue
                     nutrition = prod.get("nutrition") if isinstance(prod.get("nutrition"), dict) else {}
@@ -1701,13 +1731,20 @@ def update_enrichment_task(data: dict) -> dict:
         conn.close()
 
 
-def _batch_row(conn: sqlite3.Connection) -> dict:
-    row = conn.execute("SELECT * FROM enrichment_batch_state WHERE id=1").fetchone()
-    return dict(row) if row else {"id": 1, "active": 0, "max_items": 25, "delay_seconds": 15,
-                                 "processed_count": 0, "category": None, "current_chain": None,
-                                 "current_sap": None, "current_plu": None, "current_url": None,
-                                 "started_at": None, "updated_at": None, "paused_reason": None,
-                                 "last_error": None}
+def _batch_row(conn: sqlite3.Connection, chain: str = DEFAULT_CHAIN) -> dict:
+    chain = normalize_chain(chain)
+    conn.execute("INSERT OR IGNORE INTO enrichment_batch_states(chain) VALUES(?)", (chain,))
+    row = conn.execute(
+        "SELECT * FROM enrichment_batch_states WHERE chain=?", (chain,)
+    ).fetchone()
+    state = dict(row) if row else {
+        "chain": chain, "active": 0, "max_items": 25, "delay_seconds": 15,
+        "processed_count": 0, "category": None, "current_sap": None,
+        "current_plu": None, "current_url": None, "started_at": None,
+        "updated_at": None, "paused_reason": None, "last_error": None,
+    }
+    state["current_chain"] = chain
+    return state
 
 
 def _batch_pick_next(category: str | None = None, chain: str = DEFAULT_CHAIN) -> dict | None:
@@ -1741,10 +1778,12 @@ def _batch_reserve_item(item: dict) -> dict:
                 note='Пакетный режим V14: карточка открыта в обычном браузере'
             WHERE chain=? AND sap_code=? AND plu=? AND status!='processed'
         """, (stamp, stamp, chain, sap, plu))
+        conn.execute("INSERT OR IGNORE INTO enrichment_batch_states(chain) VALUES(?)", (chain,))
         conn.execute("""
-            UPDATE enrichment_batch_state SET current_chain=?,current_sap=?,current_plu=?,current_url=?,updated_at=?,last_error=NULL
-            WHERE id=1
-        """, (chain, sap, plu, url, stamp))
+            UPDATE enrichment_batch_states
+            SET current_sap=?,current_plu=?,current_url=?,updated_at=?,last_error=NULL
+            WHERE chain=?
+        """, (sap, plu, url, stamp, chain))
         conn.commit()
         return {"chain": chain, "sap_code": sap, "plu": plu, "name": item.get("name"), "url": url}
     finally:
@@ -1752,10 +1791,10 @@ def _batch_reserve_item(item: dict) -> dict:
 
 
 def batch_status(chain: str | None = None) -> dict:
+    active_chain = normalize_chain(chain or DEFAULT_CHAIN)
     conn = connect_db()
     try:
-        state = _batch_row(conn)
-        active_chain = normalize_chain(chain or state.get("current_chain") or DEFAULT_CHAIN)
+        state = _batch_row(conn, active_chain)
         prefix = product_url_prefix(active_chain)
         total = int(conn.execute(
             "SELECT COUNT(*) FROM products WHERE chain=?", (active_chain,)
@@ -1770,6 +1809,7 @@ def batch_status(chain: str | None = None) -> dict:
               AND COALESCE(t.status,'pending') NOT IN ('processed','skipped')
         """, (active_chain, prefix + "%")).fetchone()[0])
         state.update({"active": bool(state.get("active")), "chain": active_chain,
+                      "current_chain": active_chain,
                       "total_products": total, "processed_total": done, "remaining_total": remaining,
                       "batch_progress_percent": round(int(state.get("processed_count") or 0) / max(1, int(state.get("max_items") or 1)) * 100, 1)})
         return state
@@ -1792,9 +1832,10 @@ def batch_start(data: dict) -> dict:
     stamp = now_iso()
     conn = connect_db()
     try:
-        conn.execute("""UPDATE enrichment_batch_state SET active=1,max_items=?,delay_seconds=?,processed_count=0,
-            category=?,started_at=?,updated_at=?,paused_reason=NULL,last_error=NULL WHERE id=1""",
-                     (limit, delay, category, stamp, stamp))
+        conn.execute("INSERT OR IGNORE INTO enrichment_batch_states(chain) VALUES(?)", (chain,))
+        conn.execute("""UPDATE enrichment_batch_states SET active=1,max_items=?,delay_seconds=?,processed_count=0,
+            category=?,started_at=?,updated_at=?,paused_reason=NULL,last_error=NULL WHERE chain=?""",
+                     (limit, delay, category, stamp, stamp, chain))
         conn.commit()
     finally:
         conn.close()
@@ -1804,27 +1845,30 @@ def batch_start(data: dict) -> dict:
             "first_url": reserved["url"], "status": batch_status(chain)}
 
 
-def batch_pause(reason: str = "Остановлено пользователем") -> dict:
+def batch_pause(reason: str = "Остановлено пользователем", chain: str = DEFAULT_CHAIN) -> dict:
+    chain = normalize_chain(chain)
     stamp = now_iso()
     conn = connect_db()
     try:
-        conn.execute("UPDATE enrichment_batch_state SET active=0,updated_at=?,paused_reason=? WHERE id=1",
-                     (stamp, str(reason or "Остановлено пользователем")[:300]))
+        conn.execute("INSERT OR IGNORE INTO enrichment_batch_states(chain) VALUES(?)", (chain,))
+        conn.execute("UPDATE enrichment_batch_states SET active=0,updated_at=?,paused_reason=? WHERE chain=?",
+                     (stamp, str(reason or "Остановлено пользователем")[:300], chain))
         conn.commit()
     finally:
         conn.close()
-    return batch_status()
+    return batch_status(chain)
 
 
-def batch_resume() -> dict:
-    state = batch_status()
+def batch_resume(chain: str = DEFAULT_CHAIN) -> dict:
+    chain = normalize_chain(chain)
+    state = batch_status(chain)
     if state.get("active"):
         return {"resumed": True, "current_url": state.get("current_url"), "status": state}
     current_url = state.get("current_url")
     current_plu = state.get("current_plu")
     starting_next_package = not (current_url and current_plu)
     if starting_next_package:
-        item = _batch_pick_next(state.get("category"), normalize_chain(state.get("current_chain") or DEFAULT_CHAIN))
+        item = _batch_pick_next(state.get("category"), chain)
         if not item:
             raise ValueError("В очереди больше нет ожидающих карточек.")
         current = _batch_reserve_item(item)
@@ -1834,28 +1878,30 @@ def batch_resume() -> dict:
     try:
         if starting_next_package:
             # A completed 200-item batch starts a fresh counter on Continue.
-            conn.execute("""UPDATE enrichment_batch_state SET active=1,processed_count=0,
-                updated_at=?,paused_reason=NULL,last_error=NULL WHERE id=1""", (stamp,))
+            conn.execute("""UPDATE enrichment_batch_states SET active=1,processed_count=0,
+                updated_at=?,paused_reason=NULL,last_error=NULL WHERE chain=?""", (stamp, chain))
         else:
             # CAPTCHA/manual pause resumes the same reserved product and keeps the counter.
-            conn.execute("UPDATE enrichment_batch_state SET active=1,updated_at=?,paused_reason=NULL,last_error=NULL WHERE id=1", (stamp,))
+            conn.execute("UPDATE enrichment_batch_states SET active=1,updated_at=?,paused_reason=NULL,last_error=NULL WHERE chain=?", (stamp, chain))
         conn.commit()
     finally:
         conn.close()
-    return {"resumed": True, "current_url": current_url, "status": batch_status()}
+    return {"resumed": True, "current_url": current_url, "status": batch_status(chain)}
 
 
-def batch_fail(reason: str, captcha: bool = False) -> dict:
+def batch_fail(reason: str, captcha: bool = False, chain: str = DEFAULT_CHAIN) -> dict:
+    chain = normalize_chain(chain)
     reason = str(reason or ("Обнаружена проверка сайта" if captcha else "Ошибка страницы"))[:500]
     stamp = now_iso()
     conn = connect_db()
     try:
-        conn.execute("UPDATE enrichment_batch_state SET active=0,updated_at=?,paused_reason=?,last_error=? WHERE id=1",
-                     (stamp, "CAPTCHA — требуется ручная проверка" if captcha else "Пауза из-за ошибки страницы", reason))
+        conn.execute("INSERT OR IGNORE INTO enrichment_batch_states(chain) VALUES(?)", (chain,))
+        conn.execute("UPDATE enrichment_batch_states SET active=0,updated_at=?,paused_reason=?,last_error=? WHERE chain=?",
+                     (stamp, "CAPTCHA — требуется ручная проверка" if captcha else "Пауза из-за ошибки страницы", reason, chain))
         conn.commit()
     finally:
         conn.close()
-    return batch_status()
+    return batch_status(chain)
 
 
 def batch_record(payload: dict) -> dict:
@@ -1869,6 +1915,9 @@ def batch_record(payload: dict) -> dict:
     products = [x for x in products if isinstance(x, dict)]
     if not products:
         raise ValueError("В карточке отсутствует блок product")
+    validate_chain_url(chain, payload.get("source_url"))
+    for product in products:
+        validate_chain_url(chain, product.get("product_url"))
     validate_store(chain, sap)
     plu = str(products[0].get("plu") or "").strip()
     if not plu or not plu.isdigit():
@@ -1888,29 +1937,29 @@ def batch_record(payload: dict) -> dict:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     imported_files, imported_products, skipped, errors = import_pending_details()
     if imported_products < 1:
-        batch_fail("JSON сохранён, но импорт подробностей не подтвердился: " + "; ".join(errors[:2]))
+        batch_fail("JSON сохранён, но импорт подробностей не подтвердился: " + "; ".join(errors[:2]), chain=chain)
         raise ValueError("Не удалось импортировать подробную карточку. Проверьте журнал импорта.")
     conn = connect_db()
     try:
-        conn.execute("""UPDATE enrichment_batch_state SET processed_count=processed_count+1,updated_at=?,
-            current_sap=NULL,current_plu=NULL,current_url=NULL,last_error=NULL WHERE id=1""", (now_iso(),))
+        conn.execute("""UPDATE enrichment_batch_states SET processed_count=processed_count+1,updated_at=?,
+            current_sap=NULL,current_plu=NULL,current_url=NULL,last_error=NULL WHERE chain=?""", (now_iso(), chain))
         conn.commit()
     finally:
         conn.close()
-    new_state = batch_status()
+    new_state = batch_status(chain)
     if int(new_state.get("processed_count") or 0) >= int(new_state.get("max_items") or 1):
-        batch_pause("Пакет завершён: достигнут установленный лимит")
+        batch_pause("Пакет завершён: достигнут установленный лимит", chain)
         return {"accepted": True, "plu": plu, "processed_count": new_state["processed_count"],
-                "batch_finished": True, "next_url": None, "status": batch_status()}
+                "batch_finished": True, "next_url": None, "status": batch_status(chain)}
     next_item = _batch_pick_next(new_state.get("category"), chain)
     if not next_item:
-        batch_pause("Пакет завершён: ожидающих карточек больше нет")
+        batch_pause("Пакет завершён: ожидающих карточек больше нет", chain)
         return {"accepted": True, "plu": plu, "processed_count": new_state["processed_count"],
-                "batch_finished": True, "next_url": None, "status": batch_status()}
+                "batch_finished": True, "next_url": None, "status": batch_status(chain)}
     reserved = _batch_reserve_item(next_item)
     return {"accepted": True, "plu": plu, "processed_count": new_state["processed_count"],
             "batch_finished": False, "next_url": reserved["url"], "next": reserved,
-            "delay_seconds": int(new_state.get("delay_seconds") or 15), "status": batch_status()}
+            "delay_seconds": int(new_state.get("delay_seconds") or 15), "status": batch_status(chain)}
 
 def _download_catalog_image(url: str, destination: Path, chain: str = DEFAULT_CHAIN) -> bool:
     """Download only product image URLs already present in the local database."""
@@ -2319,11 +2368,15 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/batch/start":
                 return self._json(200, batch_start(data))
             if parsed.path == "/api/batch/pause":
-                return self._json(200, batch_pause(str(data.get("reason") or "Остановлено пользователем")))
+                return self._json(200, batch_pause(
+                    str(data.get("reason") or "Остановлено пользователем"), request_chain(data)
+                ))
             if parsed.path == "/api/batch/resume":
-                return self._json(200, batch_resume())
+                return self._json(200, batch_resume(request_chain(data)))
             if parsed.path == "/api/batch/fail":
-                return self._json(200, batch_fail(str(data.get("reason") or "Ошибка страницы"), bool(data.get("captcha"))))
+                return self._json(200, batch_fail(
+                    str(data.get("reason") or "Ошибка страницы"), bool(data.get("captcha")), request_chain(data)
+                ))
             if parsed.path == "/api/batch/record":
                 return self._json(200, batch_record(data.get("payload") or {}))
             if parsed.path == "/api/import":
