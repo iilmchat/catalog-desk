@@ -35,6 +35,12 @@ class StoreConfigTests(unittest.TestCase):
             "perekrestok",
         )
         self.assertEqual(config.chain_from_url(None), "5ka")
+        self.assertEqual(config.chain_from_url("https://shop.perekrestok.ru/product/a--1"), "perekrestok")
+        self.assertEqual(config.chain_from_url("https://not5ka.ru.attacker.invalid/product/a--1"), "5ka")
+        with self.assertRaises(ValueError):
+            config.validate_chain_url("5ka", "https://www.perekrestok.ru/product/a--1")
+        with self.assertRaises(ValueError):
+            config.validate_chain_url("perekrestok", "https://attacker.invalid/product/a--1")
 
     def test_chain_from_source(self):
         self.assertEqual(config.chain_from_source("5ka.ru-visible-page-export"), "5ka")
@@ -113,6 +119,11 @@ class MigrationV10Tests(unittest.TestCase):
                 "SELECT sql FROM sqlite_master WHERE name='products'"
             ).fetchone()[0],
         )
+        product_fk = conn.execute("PRAGMA foreign_key_list(product_categories)").fetchall()
+        self.assertEqual(len(product_fk), 3)
+        self.assertEqual({row[3] for row in product_fk}, {"chain", "sap_code", "plu"})
+        self.assertEqual({row[4] for row in product_fk}, {"chain", "sap_code", "plu"})
+        self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
         conn.close()
 
     def test_same_plu_in_two_chains_does_not_collide(self):
