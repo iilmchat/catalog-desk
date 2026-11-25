@@ -568,6 +568,22 @@ def weight_contradictions(name: str | None, attributes: dict) -> dict | None:
     }
 
 
+def has_complete_nutrition(value) -> bool:
+    """True only when all four standard nutrition values are present."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value or "{}")
+        except Exception:
+            return False
+    if not isinstance(value, dict):
+        return False
+    expected = ("Белки", "Жиры", "Углеводы", "Ккал")
+    return all(
+        key in value and value[key] is not None and str(value[key]).strip() != ""
+        for key in expected
+    )
+
+
 def quality_fields(row: dict) -> dict:
     """Индикатор полноты карточки: 8 полей + источник + противоречия."""
     text = str(row.get("details_text") or "")
@@ -592,7 +608,7 @@ def quality_fields(row: dict) -> dict:
         "цена": row.get("current_price") is not None,
         "фото": bool(row.get("image_url")),
         "состав": bool(composition),
-        "БЖУ": bool(nutrition),
+        "БЖУ": has_complete_nutrition(nutrition),
         "вес": bool(attrs.get("Вес") or attrs.get("Масса нетто") or attrs.get("Объем") or attrs.get("Объём")),
         "срок хранения": bool(attrs.get("Срок хранения") or attrs.get("Срок годности")),
         "бренд": bool(attrs.get("Бренд")),
@@ -1547,7 +1563,7 @@ def _detail_coverage(row: dict) -> tuple[int, list[str]]:
         n = json.loads(row.get("nutrition_json") or "{}")
     except Exception:
         n = {}
-    if isinstance(n, dict) and any(v not in (None, "", {}) for v in n.values()): filled.append("Пищевая ценность")
+    if has_complete_nutrition(n): filled.append("Пищевая ценность")
     try:
         a = json.loads(row.get("attributes_json") or "{}")
     except Exception:

@@ -50,10 +50,43 @@ class QualityRepairTests(unittest.TestCase):
         })
         self.assertGreaterEqual(quality["percent"], 87)
         self.assertTrue(quality["fields"]["состав"])
-        self.assertTrue(quality["fields"]["БЖУ"])
+        self.assertFalse(quality["fields"]["БЖУ"])
         self.assertIn("не лабораторная", quality["disclaimer"])
         self.assertIsNotNone(quality["contradictions"])
         self.assertEqual(quality["contradictions"]["attribute_value"], 300)
+
+    def test_nutrition_requires_all_four_values(self):
+        complete = {"Белки": "14.5", "Жиры": "0", "Углеводы": "4.1", "Ккал": "284"}
+        self.assertTrue(mod.has_complete_nutrition(complete))
+        self.assertTrue(mod.has_complete_nutrition(json.dumps(complete, ensure_ascii=False)))
+
+        for partial in (
+            {},
+            {"Белки": "14.5"},
+            {"Белки": "14.5", "Жиры": "0", "Углеводы": "4.1"},
+            {"Белки": "14.5", "Жиры": "", "Углеводы": "4.1", "Ккал": "284"},
+        ):
+            self.assertFalse(mod.has_complete_nutrition(partial))
+
+        score, blocks = mod._detail_coverage({
+            "composition": "Состав",
+            "description": "Описание",
+            "nutrition_json": json.dumps({"Белки": "14.5"}),
+            "attributes_json": "{}",
+            "details_text": "Текст карточки",
+        })
+        self.assertEqual(score, 60)
+        self.assertNotIn("Пищевая ценность", blocks)
+
+        score, blocks = mod._detail_coverage({
+            "composition": "Состав",
+            "description": "Описание",
+            "nutrition_json": json.dumps(complete, ensure_ascii=False),
+            "attributes_json": "{}",
+            "details_text": "Текст карточки",
+        })
+        self.assertEqual(score, 80)
+        self.assertIn("Пищевая ценность", blocks)
 
     def test_import_repairs_card_24139(self):
         tmp = tempfile.TemporaryDirectory()
