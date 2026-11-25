@@ -165,7 +165,9 @@ class MultiStoreBatchTests(unittest.TestCase):
         self.assertTrue(mod.errors_data({"chain": ["perekrestok"]})[0]["resolved"])
 
         scheduled = mod.set_schedule({"chain": ["perekrestok"], "run_date": ["2026-11-25"]})
-        self.assertEqual(scheduled["status"], "pending")
+        self.assertEqual(scheduled["status"], "planned_manual")
+        self.assertFalse(scheduled["automatic_collection"])
+        self.assertEqual(mod.schedule_data()["execution_mode"], "manual_dom_only")
         self.assertEqual(mod.schedule_data()["runs"][0]["chain"], "perekrestok")
 
         backup = mod.backup_now()
@@ -178,6 +180,18 @@ class MultiStoreBatchTests(unittest.TestCase):
             mod.api_v1("/api/v1/products/perekrestok/100001", {})["data"]["product"]["plu"],
             "100001",
         )
+
+    def test_batch_states_are_independent_for_two_stores(self):
+        started_5ka = mod.batch_start({"chain": "5ka", "limit": 1, "delay_seconds": 12})
+        started_pr = mod.batch_start({"chain": "perekrestok", "limit": 1, "delay_seconds": 12})
+        self.assertEqual(started_5ka["chain"], "5ka")
+        self.assertEqual(started_pr["chain"], "perekrestok")
+        self.assertTrue(mod.batch_status("5ka")["active"])
+        self.assertTrue(mod.batch_status("perekrestok")["active"])
+
+        mod.batch_pause("Пауза Перекрёстка", "perekrestok")
+        self.assertFalse(mod.batch_status("perekrestok")["active"])
+        self.assertTrue(mod.batch_status("5ka")["active"])
 
     def test_stores_registry_and_cross_chain_compare(self):
         stores = mod.stores_data()
