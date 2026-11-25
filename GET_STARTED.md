@@ -57,11 +57,11 @@ pip install -r requirements_v14.txt
 Сервер:
 
 - слушает только loopback, `--host` не может быть внешним адресом;
-- при первом запуске делает `pyaterochka_catalog_v9.pre_v14_backup.sqlite3`;
-- применяет идемпотентные миграции V14 (таблицы деталей, фото, очереди);
+- перед обновлением создаёт резервные копии существующей базы (`*.pre_v14_backup.sqlite3` и `*.pre_v15.sqlite3`, если база уже есть);
+- применяет идемпотентные миграции V14/V15, включая `chain`, составные ключи и отдельные состояния очередей по сетям;
 - открывает браузер автоматически (`--no-browser` — отключить).
 
-Проверка: `GET /api/health` → `{"ok": true, "db": "pyaterochka_catalog_v9.sqlite3", "version": "14.0"}`.
+Проверка: `GET /api/health` → `ok=true`, `version="15.1-dev"`; также возвращается список поддерживаемых сетей.
 
 ---
 
@@ -102,9 +102,9 @@ python import_5ka_catalog_v9.py --chain perekrestok --input-dir C:\path\to\expor
 
 ### 5.1. Bookmarklet одной карточки
 
-Откройте карточку товара, запустите
-`ui_v14/5ka_export_product_details_bookmarklet_v14.txt`, введите SAP (`35XY`),
-загрузите JSON через «Сбор и импорты» → «Импортировать доп. сведения».
+Откройте карточку выбранной сети. Для Пятёрочки используйте
+`ui_v14/5ka_export_product_details_bookmarklet_v14.txt` (SAP `35XY`), для Перекрёстка —
+`ui_v14/pr_export_product_details_bookmarklet_v14.txt` (SAP считывается из контекста магазина, fallback `XSEO`). Затем загрузите JSON через «Сбор и импорты» → «Импортировать доп. сведения».
 
 ### 5.2. Пакетный режим V15.1
 
@@ -132,7 +132,7 @@ python -c "import sqlite3; c=sqlite3.connect('pyaterochka_catalog_v9.sqlite3'); 
 
 В интерфейсе:
 
-- [ ] `/api/health` → `ok=true`;
+- [ ] `/api/health` → `ok=true`, версия `15.1-dev`, список сетей содержит обе сети;
 - [ ] «Каталог» показывает товары, поиск по названию работает;
 - [ ] «Аналитика» строит график и топы изменений;
 - [ ] «Массовое обогащение» показывает очередь и счётчики;
