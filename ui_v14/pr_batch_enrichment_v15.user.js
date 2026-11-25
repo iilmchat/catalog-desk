@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catalog Desk - Perekrestok batch details V15
 // @namespace    local.catalogdesk.perekrestok
-// @version      15.0.0
+// @version      15.1.0
 // @description  Reads only the visible perekrestok.ru product page DOM and sends the snapshot to the local Catalog Desk. Stops on CAPTCHA.
 // @match        https://www.perekrestok.ru/*
 // @match        https://perekrestok.ru/*
