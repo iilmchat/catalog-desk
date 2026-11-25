@@ -1132,9 +1132,10 @@ def main() -> int:
     else:
         print("Режим дозагрузки фото: новые JSON-выгрузки не импортируются.")
 
-    products = db.products()
+    # Process photos only for the requested chain; the SQLite database is shared.
+    products = [p for p in db.products() if p.get("Сеть") == chain]
     if not products:
-        print(f"Нет данных для базы. Положите выгрузки JSON в {input_dir}")
+        print(f"Нет товаров сети {chain}. Положите выгрузки JSON в {input_dir}")
         db.close()
         return 1
 
