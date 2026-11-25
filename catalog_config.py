@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -96,13 +97,32 @@ def normalize_chain(value: str | None) -> str:
 
 
 def chain_from_url(url: str | None) -> str:
-    """Определить сеть по URL карточки/каталога; неизвестный домен → сеть по умолчанию."""
-    text = str(url or "").lower()
+    """Определить сеть по hostname URL; неизвестный домен → сеть по умолчанию."""
+    host = (urlparse(str(url or "")).hostname or "").lower()
     for chain, cfg in STORES.items():
-        for domain in cfg["match_domains"]:
-            if domain in text:
-                return chain
+        if any(host == domain or host.endswith("." + domain) for domain in cfg["match_domains"]):
+            return chain
     return DEFAULT_CHAIN
+
+
+def validate_chain_url(chain: str, url: str | None) -> None:
+    """Отклонить URL, если он относится к другой/неизвестной торговой сети."""
+    if not url:
+        return
+    expected = normalize_chain(chain)
+    parsed = urlparse(str(url).strip())
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"} or not host:
+        raise ValueError(f"Некорректный URL источника для сети {expected}: {url}")
+    actual = None
+    for candidate, cfg in STORES.items():
+        if any(host == domain or host.endswith("." + domain) for domain in cfg["match_domains"]):
+            actual = candidate
+            break
+    if actual is None:
+        raise ValueError(f"Домен {host} не зарегистрирован в Catalog Desk")
+    if actual != expected:
+        raise ValueError(f"URL относится к сети {actual}, но импорт помечен как {expected}")
 
 
 def chain_from_source(source: str | None) -> str | None:

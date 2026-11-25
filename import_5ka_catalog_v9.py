@@ -29,9 +29,11 @@ from urllib.parse import parse_qs, urlparse
 
 from catalog_config import (
     DEFAULT_CHAIN,
+    allowed_sap,
     chain_from_payload,
     get_store,
     normalize_chain,
+    validate_chain_url,
 )
 from catalog_migrations import migrate_v9_to_v10
 
@@ -505,15 +507,37 @@ class CatalogDB:
 
         captured = normalize_timestamp(meta.get("captured_at"), utc_now())
         imported = utc_now()  # actual time this file is inserted into our local database
-        sap_from_meta = meta.get("sap_code")
         chain = normalize_chain(meta.get("chain") or DEFAULT_CHAIN)
+        validate_chain_url(chain, meta.get("source_url"))
+        allowed = allowed_sap(chain)
+        sap_from_meta = str(meta.get("sap_code") or "").strip()
+        if sap_from_meta and sap_from_meta not in allowed:
+            raise ValueError(
+                f"SAP {sap_from_meta} не относится к сети {chain}; допустимо: {', '.join(allowed)}"
+            )
         unique_rows: dict[tuple[str, str, str], dict[str, Any]] = {}
         for row in rows:
             plu = str(row.get("PLU") or "").strip()
             if not plu:
                 continue
-            sap = str(first_present(row.get("SAP магазина"), sap_from_meta, "НЕ УКАЗАН")).strip()
             row_chain = normalize_chain(row.get("Сеть") or chain)
+            if row_chain != chain:
+                raise ValueError(
+                    f"В одной выгрузке смешаны сети: метаданные={chain}, строка {plu}={row_chain}"
+                )
+            sap_value = first_present(row.get("SAP магазина"), sap_from_meta, get_store(row_chain)["default_sap"])
+            sap = str(sap_value or "").strip()
+            if sap.casefold() in {"", "не указан", "не указана", "unknown", "null", "none"}:
+                sap = str(sap_from_meta or get_store(row_chain)["default_sap"]).strip()
+            if sap not in allowed_sap(row_chain):
+                raise ValueError(
+                    f"SAP {sap} не относится к сети {row_chain}; допустимо: {', '.join(allowed_sap(row_chain))}"
+                )
+            if sap_from_meta and sap != sap_from_meta:
+                raise ValueError(
+                    f"SAP строки {sap} не совпадает с SAP выгрузки {sap_from_meta}"
+                )
+            validate_chain_url(row_chain, row.get("карточка товара"))
             normalized = dict(row)
             normalized["PLU"] = plu
             normalized["Сеть"] = row_chain
@@ -912,21 +936,22 @@ def export_outputs(db: CatalogDB, expected_sap: str, chain: str = DEFAULT_CHAIN)
     xlsx_path = OUTPUT_XLSX if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10.xlsx"
     csv_path = OUTPUT_CSV if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10.csv"
     report_path = REPORT_JSON if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10_report.json"
-    products = db.products()
+    # Export artifacts must be scoped to the selected chain; the SQLite DB is shared.
+    products = [p for p in db.products() if p.get("Сеть") == chain]
     # Optional V11 enriched product details live in the same SQLite file.
     detail_rows = []
     try:
         raw_details = db.conn.execute("""SELECT chain,sap_code,plu,product_name,description,composition,nutrition_json,
             attributes_json,details_text,product_url,image_url,first_imported_at,last_imported_at,last_captured_at
-            FROM product_details ORDER BY sap_code,product_name COLLATE NOCASE""").fetchall()
+            FROM product_details WHERE chain=? ORDER BY sap_code,product_name COLLATE NOCASE""", (chain,)).fetchall()
         detail_rows = [dict(zip(DETAIL_COLUMNS, tuple(r))) for r in raw_details]
     except sqlite3.OperationalError:
         detail_rows = []
-    history = db.history()
-    changes = db.changes()
-    events = db.events()
-    exports = db.exports()
-    progress = db.progress(products)
+    history = [r for r in db.history() if r.get("Сеть") == chain]
+    changes = [r for r in db.changes() if r.get("Сеть") == chain]
+    events = [r for r in db.events() if r.get("Сеть") == chain]
+    exports = [r for r in db.exports() if r.get("Сеть") == chain]
+    progress = [r for r in db.progress(products) if r.get("Сеть") == chain]
 
     products_df = pd.DataFrame(products, columns=PRODUCT_COLUMNS)
     history_df = pd.DataFrame(history, columns=HISTORY_COLUMNS)
@@ -938,7 +963,7 @@ def export_outputs(db: CatalogDB, expected_sap: str, chain: str = DEFAULT_CHAIN)
     image_rows = []
     try:
         raw_images = db.conn.execute("""SELECT chain,sap_code,plu,image_order,image_url,local_file,source,first_seen_at,last_seen_at
-            FROM product_images ORDER BY sap_code,plu,image_order,id""").fetchall()
+            FROM product_images WHERE chain=? ORDER BY sap_code,plu,image_order,id""", (chain,)).fetchall()
         image_rows = [dict(zip(IMAGE_COLUMNS, tuple(r))) for r in raw_images]
     except sqlite3.OperationalError:
         image_rows = []
@@ -1022,6 +1047,8 @@ def main() -> int:
     chain = normalize_chain(args.chain)
     allowed_saps = get_store(chain)["sap_codes"]
     expected_sap = args.expected_sap or allowed_saps[0]
+    if expected_sap not in allowed_saps:
+        parser.error(f"--expected-sap {expected_sap} не относится к {chain}; допустимо: {', '.join(allowed_saps)}")
     input_dir = args.input_dir or (BASE_DIR / get_store(chain)["paths"]["exports"])
     input_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1046,11 +1073,7 @@ def main() -> int:
                     continue
                 added, unique = db.import_rows(source_hash, path.name, rows, meta)
                 newly_imported += 1
-                print(f"Импорт: {path.name}: строк {added}, уникальных SAP+PLU {unique}")
-                if meta.get("sap_code") and meta["sap_code"] not in allowed_saps:
-                    print(f"  ВНИМАНИЕ: в файле SAP {meta['sap_code']}, для сети {chain} ожидался один из {allowed_saps}")
-                elif not meta.get("sap_code"):
-                    print("  ВНИМАНИЕ: SAP не определён в файле; цены нельзя уверенно привязать к магазину")
+                print(f"Импорт: {path.name}: строк {added}, уникальных товаров {unique}")
             except Exception as exc:
                 errors.append({"file": str(path), "error": str(exc)})
                 print(f"ОШИБКА {path.name}: {exc}")
@@ -1109,9 +1132,10 @@ def main() -> int:
     else:
         print("Режим дозагрузки фото: новые JSON-выгрузки не импортируются.")
 
-    products = db.products()
+    # Process photos only for the requested chain; the SQLite database is shared.
+    products = [p for p in db.products() if p.get("Сеть") == chain]
     if not products:
-        print(f"Нет данных для базы. Положите выгрузки JSON в {input_dir}")
+        print(f"Нет товаров сети {chain}. Положите выгрузки JSON в {input_dir}")
         db.close()
         return 1
 

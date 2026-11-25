@@ -57,8 +57,16 @@ def table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 def _v10_ddl(sql: str) -> str:
     """Преобразовать DDL V9 в DDL V10: chain + расширенные ключи."""
-    lines = [line for line in sql.splitlines() if "FOREIGN KEY" not in line.upper()]
-    text = "\n".join(lines)
+    # Keep foreign-key constraints intact and extend product references to the
+    # new composite key. Parent tables are rebuilt before dependent tables.
+    text = sql
+    text = re.sub(
+        r"FOREIGN\s+KEY\s*\(\s*sap_code\s*,\s*plu\s*\)\s*"
+        r"REFERENCES\s+products\s*\(\s*sap_code\s*,\s*plu\s*\)",
+        "FOREIGN KEY (chain, sap_code, plu) REFERENCES products(chain, sap_code, plu)",
+        text,
+        flags=re.IGNORECASE,
+    )
 
     # Вставляем chain сразу после "CREATE TABLE <name> (".
     text = re.sub(
@@ -172,6 +180,31 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> bool:
         True, если были внесены изменения; False, если база уже V10.
     """
     if table_exists(conn, "products") and "chain" in table_columns(conn, "products"):
+        # The physical schema may already be V10 while schema_meta is stale (e.g.
+        # a previous/manual migration added chain but did not update metadata).
+        # Reconcile idempotent indexes and the schema marker without rebuilding tables.
+        started_transaction = not conn.in_transaction
+        try:
+            if started_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            for statement in INDEXES_V10:
+                target = re.search(r"ON\s+(\w+)\(", statement, re.IGNORECASE)
+                if target and table_exists(conn, target.group(1)):
+                    conn.execute(statement)
+            if not table_exists(conn, "schema_meta"):
+                conn.execute(
+                    "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                )
+            conn.execute(
+                "INSERT INTO schema_meta(key,value) VALUES('schema_version','10') "
+                "ON CONFLICT(key) DO UPDATE SET value='10'"
+            )
+            if started_transaction:
+                conn.commit()
+        except Exception:
+            if started_transaction:
+                conn.rollback()
+            raise
         return False
 
     conn.execute("PRAGMA foreign_keys=OFF")
@@ -196,6 +229,11 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> bool:
             "INSERT INTO schema_meta(key,value) VALUES('schema_version','10') "
             "ON CONFLICT(key) DO UPDATE SET value='10'"
         )
+        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise sqlite3.IntegrityError(
+                f"V10 migration produced {len(violations)} foreign-key violation(s)"
+            )
         conn.commit()
         return True
     except Exception:

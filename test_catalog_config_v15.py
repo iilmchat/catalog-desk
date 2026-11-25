@@ -35,6 +35,12 @@ class StoreConfigTests(unittest.TestCase):
             "perekrestok",
         )
         self.assertEqual(config.chain_from_url(None), "5ka")
+        self.assertEqual(config.chain_from_url("https://shop.perekrestok.ru/product/a--1"), "perekrestok")
+        self.assertEqual(config.chain_from_url("https://not5ka.ru.attacker.invalid/product/a--1"), "5ka")
+        with self.assertRaises(ValueError):
+            config.validate_chain_url("5ka", "https://www.perekrestok.ru/product/a--1")
+        with self.assertRaises(ValueError):
+            config.validate_chain_url("perekrestok", "https://attacker.invalid/product/a--1")
 
     def test_chain_from_source(self):
         self.assertEqual(config.chain_from_source("5ka.ru-visible-page-export"), "5ka")
@@ -71,7 +77,8 @@ class MigrationV10Tests(unittest.TestCase):
         );
         CREATE TABLE product_categories(
             sap_code TEXT, plu TEXT, category TEXT,
-            PRIMARY KEY(sap_code,plu,category)
+            PRIMARY KEY(sap_code,plu,category),
+            FOREIGN KEY(sap_code,plu) REFERENCES products(sap_code,plu) ON DELETE CASCADE
         );
         CREATE TABLE price_history(
             id INTEGER PRIMARY KEY AUTOINCREMENT, source_hash TEXT, sap_code TEXT,
@@ -113,6 +120,11 @@ class MigrationV10Tests(unittest.TestCase):
                 "SELECT sql FROM sqlite_master WHERE name='products'"
             ).fetchone()[0],
         )
+        product_fk = conn.execute("PRAGMA foreign_key_list(product_categories)").fetchall()
+        self.assertEqual(len(product_fk), 3)
+        self.assertEqual({row[3] for row in product_fk}, {"chain", "sap_code", "plu"})
+        self.assertEqual({row[4] for row in product_fk}, {"chain", "sap_code", "plu"})
+        self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
         conn.close()
 
     def test_same_plu_in_two_chains_does_not_collide(self):
@@ -146,6 +158,29 @@ class MigrationV10Tests(unittest.TestCase):
         self.assertFalse(migrations.migrate_v9_to_v10(conn))
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM products").fetchone()[0], 2)
         conn.close()
+
+    def test_existing_chain_schema_reconciles_stale_schema_version(self):
+        conn = sqlite3.connect(self.db)
+        try:
+            self.assertTrue(migrations.migrate_v9_to_v10(conn))
+            conn.execute(
+                "UPDATE schema_meta SET value='9' WHERE key='schema_version'"
+            )
+            conn.commit()
+
+            # The physical columns are already V10; only the metadata is stale.
+            self.assertFalse(migrations.migrate_v9_to_v10(conn))
+            self.assertFalse(conn.in_transaction)
+            self.assertEqual(
+                conn.execute(
+                    "SELECT value FROM schema_meta WHERE key='schema_version'"
+                ).fetchone()[0],
+                "10",
+            )
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM products").fetchone()[0], 2)
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":
