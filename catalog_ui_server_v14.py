@@ -2287,7 +2287,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static(unquote(path[len("/static/"):]))
             if path.startswith("/photos/"):
                 name = Path(unquote(path[len("/photos/"):])).name
-                return self._file(PHOTO_DIR / name)
+                photo_path = PHOTO_DIR / name
+                for photo_dir in store_dirs("photos"):
+                    candidate = photo_dir / name
+                    if candidate.is_file():
+                        photo_path = candidate
+                        break
+                return self._file(photo_path)
             if path == "/files/excel": return self._file(BASE_DIR / "pyaterochka_catalog_v9.xlsx", attachment=True)
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
             if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "15.1-dev", "chains": list(STORES)})
