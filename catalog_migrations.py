@@ -57,9 +57,16 @@ def table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 def _v10_ddl(sql: str) -> str:
     """Преобразовать DDL V9 в DDL V10: chain + расширенные ключи."""
-    # Keep foreign-key constraints intact. Parent tables are rebuilt before
-    # dependent tables in TABLES_WITH_CHAIN; enforcement is restored afterwards.
+    # Keep foreign-key constraints intact and extend product references to the
+    # new composite key. Parent tables are rebuilt before dependent tables.
     text = sql
+    text = re.sub(
+        r"FOREIGN\\s+KEY\\s*\\(\\s*sap_code\\s*,\\s*plu\\s*\\)\\s*"
+        r"REFERENCES\\s+products\\s*\\(\\s*sap_code\\s*,\\s*plu\\s*\\)",
+        "FOREIGN KEY (chain, sap_code, plu) REFERENCES products(chain, sap_code, plu)",
+        text,
+        flags=re.IGNORECASE,
+    )
 
     # Вставляем chain сразу после "CREATE TABLE <name> (".
     text = re.sub(
