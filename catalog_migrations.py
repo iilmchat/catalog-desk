@@ -180,6 +180,21 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> bool:
         True, если были внесены изменения; False, если база уже V10.
     """
     if table_exists(conn, "products") and "chain" in table_columns(conn, "products"):
+        # The physical schema may already be V10 while schema_meta is stale (e.g.
+        # a previous/manual migration added chain but did not update metadata).
+        # Reconcile idempotent indexes and the schema marker without rebuilding tables.
+        for statement in INDEXES_V10:
+            target = re.search(r"ON\\s+(\\w+)\\(", statement, re.IGNORECASE)
+            if target and table_exists(conn, target.group(1)):
+                conn.execute(statement)
+        if not table_exists(conn, "schema_meta"):
+            conn.execute(
+                "CREATE TABLE schema_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+        conn.execute(
+            "INSERT INTO schema_meta(key,value) VALUES('schema_version','10') "
+            "ON CONFLICT(key) DO UPDATE SET value='10'"
+        )
         return False
 
     conn.execute("PRAGMA foreign_keys=OFF")
