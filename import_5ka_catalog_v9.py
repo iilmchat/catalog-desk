@@ -525,7 +525,10 @@ class CatalogDB:
                 raise ValueError(
                     f"В одной выгрузке смешаны сети: метаданные={chain}, строка {plu}={row_chain}"
                 )
-            sap = str(first_present(row.get("SAP магазина"), sap_from_meta, get_store(row_chain)["default_sap"])).strip()
+            sap_value = first_present(row.get("SAP магазина"), sap_from_meta, get_store(row_chain)["default_sap"])
+            sap = str(sap_value or "").strip()
+            if sap.casefold() in {"", "не указан", "не указана", "unknown", "null", "none"}:
+                sap = str(sap_from_meta or get_store(row_chain)["default_sap"]).strip()
             if sap not in allowed_sap(row_chain):
                 raise ValueError(
                     f"SAP {sap} не относится к сети {row_chain}; допустимо: {', '.join(allowed_sap(row_chain))}"
