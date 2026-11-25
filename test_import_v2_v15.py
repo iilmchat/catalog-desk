@@ -156,5 +156,86 @@ class ExportV2Tests(unittest.TestCase):
             db.close()
 
 
+    def test_export_outputs_are_isolated_between_chains(self):
+        db = mod.CatalogDB(mod.DB_PATH)
+        try:
+            pr_rows, pr_meta = mod.load_json_rows(self.payload_path)
+            db.import_rows("hash-pr-chain", self.payload_path.name, pr_rows, pr_meta)
+
+            fiveka_row = {
+                "Сеть": "5ka",
+                "SAP магазина": "35XY",
+                "PLU": "900001",
+                "название": "Тестовый товар Пятёрочки",
+                "цена сейчас, ₽": 89.99,
+                "обычная цена, ₽": 99.99,
+                "цена по акции, ₽": 89.99,
+                "скидка, %": 10.0,
+                "маркер акции": "-10%",
+                "категории": "Тестовая категория 5ka",
+                "фото URL": "https://catalog-images.x5static.net/product/3-main/320x320.jpeg",
+                "карточка товара": "https://5ka.ru/product/testovyy-tovar--900001/",
+                "время получения": "2026-11-25T10:00:00Z",
+                "сырой текст карточки": "Тестовый товар 89,99 ₽",
+            }
+            fiveka_meta = {
+                "chain": "5ka",
+                "category": "Тестовая категория 5ka",
+                "source_url": "https://5ka.ru/catalog/test--251C51627/?page=1",
+                "sap_code": "35XY",
+                "captured_at": "2026-11-25T10:00:00Z",
+            }
+            db.import_rows("hash-5ka-chain", "5ka_export.json", [fiveka_row], fiveka_meta)
+
+            pr_report = mod.export_outputs(db, "XSEO", chain="perekrestok")
+            self.assertEqual(pr_report["products"], 2)
+            self.assertEqual(pr_report["price_observations"], 2)
+            self.assertEqual(pr_report["source_exports"], 1)
+            self.assertEqual(pr_report["category_progress_rows"], 1)
+            self.assertEqual(pr_report["store_sap_codes"], ["XSEO"])
+            self.assertFalse(pr_report["sap_mismatch"])
+
+            pr_csv = Path(self.tmp.name) / "catalog_perekrestok_v10.csv"
+            with pr_csv.open(encoding="utf-8-sig", newline="") as handle:
+                pr_values = list(csv.DictReader(handle))
+            self.assertEqual(len(pr_values), 2)
+            self.assertTrue(all(row["Сеть"] == "perekrestok" for row in pr_values))
+
+            pr_xlsx = Path(self.tmp.name) / "catalog_perekrestok_v10.xlsx"
+            wb = mod.load_workbook(pr_xlsx, read_only=True, data_only=True)
+            try:
+                expected_rows = {
+                    "Товары": 2,
+                    "История цен": 2,
+                    "События карточек": 2,
+                    "Экспорты": 1,
+                    "Прогресс категорий": 1,
+                }
+                for sheet, data_rows in expected_rows.items():
+                    self.assertEqual(wb[sheet].max_row - 1, data_rows, sheet)
+                    if sheet in {"Товары", "История цен", "События карточек", "Экспорты", "Прогресс категорий"}:
+                        headers = [cell.value for cell in wb[sheet][1]]
+                        chain_col = headers.index("Сеть") + 1
+                        self.assertTrue(
+                            all(wb[sheet].cell(row, chain_col).value == "perekrestok"
+                                for row in range(2, wb[sheet].max_row + 1)),
+                            sheet,
+                        )
+            finally:
+                wb.close()
+
+            fiveka_report = mod.export_outputs(db, "35XY", chain="5ka")
+            self.assertEqual(fiveka_report["products"], 1)
+            self.assertEqual(fiveka_report["store_sap_codes"], ["35XY"])
+            self.assertFalse(fiveka_report["sap_mismatch"])
+            fiveka_csv = Path(self.tmp.name) / "catalog.csv"
+            with fiveka_csv.open(encoding="utf-8-sig", newline="") as handle:
+                fiveka_values = list(csv.DictReader(handle))
+            self.assertEqual(len(fiveka_values), 1)
+            self.assertEqual(fiveka_values[0]["Сеть"], "5ka")
+        finally:
+            db.close()
+
+
 if __name__ == "__main__":
     unittest.main()
