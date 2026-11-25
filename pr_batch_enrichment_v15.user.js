@@ -15,6 +15,9 @@
   'use strict';
 
   const LOCAL_API = 'http://127.0.0.1:8767';
+  const CHAIN = 'perekrestok';
+  const STATUS_PATH = '/api/batch/status?chain=' + CHAIN;
+  const reportFailure = data => request('POST', '/api/batch/fail', { ...data, chain: CHAIN });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   const visible = element => {
@@ -211,12 +214,12 @@
 
   async function main() {
     let state;
-    try { state = await request('GET', '/api/batch/status'); }
+    try { state = await request('GET', STATUS_PATH); }
     catch (_) { return; }
 
     if (isChallengePage()) {
       if (state.active) {
-        await request('POST', '/api/batch/fail', { captcha: true, reason: 'На открытой странице обнаружена проверка X5.' }).catch(() => {});
+        await reportFailure({ captcha: true, reason: 'На открытой странице обнаружена проверка X5.' }).catch(() => {});
         showNotice('Пакет остановлен: сайт запросил проверку. Пройди её вручную, затем нажми «Продолжить» в Catalog Desk.', true);
       }
       return;
@@ -228,7 +231,7 @@
     showNotice(`Пакет V14: загружаю PLU ${pluMatch[1]}…`);
     await sleep(3500);
     if (isChallengePage()) {
-      await request('POST', '/api/batch/fail', { captcha: true, reason: 'Проверка X5 появилась во время загрузки товара.' }).catch(() => {});
+      await reportFailure({ captcha: true, reason: 'Проверка X5 появилась во время загрузки товара.' }).catch(() => {});
       showNotice('Пакет остановлен: нужна ручная проверка сайта.', true);
       return;
     }
@@ -237,7 +240,7 @@
     if (sessionStorage.getItem(guardKey)) return;
 
     try {
-      const current = await request('GET', '/api/batch/status');
+      const current = await request('GET', STATUS_PATH);
       if (!current.active || String(current.current_plu || '') !== pluMatch[1]) return;
       const payload = buildPayload(String(current.current_sap || 'XSEO'));
       const result = await request('POST', '/api/batch/record', { payload });
@@ -249,14 +252,14 @@
       const delay = Math.max(12, Number(result.delay_seconds || 15));
       showNotice(`PLU ${pluMatch[1]} сохранён. Следующий товар через ${delay} сек. Прогресс: ${result.processed_count}.`);
       await sleep(delay * 1000);
-      const latest = await request('GET', '/api/batch/status');
+      const latest = await request('GET', STATUS_PATH);
       if (!latest.active) {
         showNotice('Пакет приостановлен. Новая карточка не открыта.');
         return;
       }
       location.assign(result.next_url);
     } catch (error) {
-      await request('POST', '/api/batch/fail', { captcha: false, reason: String(error.message || error) }).catch(() => {});
+      await reportFailure({ captcha: false, reason: String(error.message || error) }).catch(() => {});
       showNotice(`Пакет остановлен: ${error.message || error}. Проверь локальный сервер и карточку товара.`, true);
     }
   }
