@@ -2290,7 +2290,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(PHOTO_DIR / name)
             if path == "/files/excel": return self._file(BASE_DIR / "pyaterochka_catalog_v9.xlsx", attachment=True)
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
-            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "15.0-dev", "chains": list(STORES)})
+            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "15.1-dev", "chains": list(STORES)})
             if path == "/api/stores": return self._json(200, stores_data())
             if path == "/api/compare": return self._json(200, compare_data(params))
             if path == "/api/search": return self._json(200, search_products(params))
