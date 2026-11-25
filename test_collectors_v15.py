@@ -39,6 +39,9 @@ class PerekrestokCollectorsTests(unittest.TestCase):
             self.assertNotIn("py5ka-", text, key)
 
         self.assertIn("https://www.perekrestok.ru/*", texts["userscript"])
+        self.assertIn("const CHAIN = 'perekrestok'", texts["userscript"])
+        self.assertIn("/api/batch/status?chain=", texts["userscript"])
+        self.assertIn("chain: CHAIN", texts["userscript"])
         self.assertIn("detected||'XSEO'", texts["details"])
         self.assertIn("localStorage.getItem('DeliveryPanelStore')", texts["details"])
         self.assertIn("pr-v15-done-", texts["userscript"])
