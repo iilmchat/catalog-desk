@@ -184,7 +184,7 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> bool:
         # a previous/manual migration added chain but did not update metadata).
         # Reconcile idempotent indexes and the schema marker without rebuilding tables.
         for statement in INDEXES_V10:
-            target = re.search(r"ON\\s+(\\w+)\\(", statement, re.IGNORECASE)
+            target = re.search(r"ON\s+(\w+)\(", statement, re.IGNORECASE)
             if target and table_exists(conn, target.group(1)):
                 conn.execute(statement)
         if not table_exists(conn, "schema_meta"):
