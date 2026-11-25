@@ -29,9 +29,11 @@ from urllib.parse import parse_qs, urlparse
 
 from catalog_config import (
     DEFAULT_CHAIN,
+    allowed_sap,
     chain_from_payload,
     get_store,
     normalize_chain,
+    validate_chain_url,
 )
 from catalog_migrations import migrate_v9_to_v10
 
@@ -505,15 +507,34 @@ class CatalogDB:
 
         captured = normalize_timestamp(meta.get("captured_at"), utc_now())
         imported = utc_now()  # actual time this file is inserted into our local database
-        sap_from_meta = meta.get("sap_code")
         chain = normalize_chain(meta.get("chain") or DEFAULT_CHAIN)
+        validate_chain_url(chain, meta.get("source_url"))
+        allowed = allowed_sap(chain)
+        sap_from_meta = str(meta.get("sap_code") or "").strip()
+        if sap_from_meta and sap_from_meta not in allowed:
+            raise ValueError(
+                f"SAP {sap_from_meta} не относится к сети {chain}; допустимо: {', '.join(allowed)}"
+            )
         unique_rows: dict[tuple[str, str, str], dict[str, Any]] = {}
         for row in rows:
             plu = str(row.get("PLU") or "").strip()
             if not plu:
                 continue
-            sap = str(first_present(row.get("SAP магазина"), sap_from_meta, "НЕ УКАЗАН")).strip()
             row_chain = normalize_chain(row.get("Сеть") or chain)
+            if row_chain != chain:
+                raise ValueError(
+                    f"В одной выгрузке смешаны сети: метаданные={chain}, строка {plu}={row_chain}"
+                )
+            sap = str(first_present(row.get("SAP магазина"), sap_from_meta, get_store(row_chain)["default_sap"])).strip()
+            if sap not in allowed_sap(row_chain):
+                raise ValueError(
+                    f"SAP {sap} не относится к сети {row_chain}; допустимо: {', '.join(allowed_sap(row_chain))}"
+                )
+            if sap_from_meta and sap != sap_from_meta:
+                raise ValueError(
+                    f"SAP строки {sap} не совпадает с SAP выгрузки {sap_from_meta}"
+                )
+            validate_chain_url(row_chain, row.get("карточка товара"))
             normalized = dict(row)
             normalized["PLU"] = plu
             normalized["Сеть"] = row_chain
@@ -1022,6 +1043,8 @@ def main() -> int:
     chain = normalize_chain(args.chain)
     allowed_saps = get_store(chain)["sap_codes"]
     expected_sap = args.expected_sap or allowed_saps[0]
+    if expected_sap not in allowed_saps:
+        parser.error(f"--expected-sap {expected_sap} не относится к {chain}; допустимо: {', '.join(allowed_saps)}")
     input_dir = args.input_dir or (BASE_DIR / get_store(chain)["paths"]["exports"])
     input_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1046,11 +1069,7 @@ def main() -> int:
                     continue
                 added, unique = db.import_rows(source_hash, path.name, rows, meta)
                 newly_imported += 1
-                print(f"Импорт: {path.name}: строк {added}, уникальных SAP+PLU {unique}")
-                if meta.get("sap_code") and meta["sap_code"] not in allowed_saps:
-                    print(f"  ВНИМАНИЕ: в файле SAP {meta['sap_code']}, для сети {chain} ожидался один из {allowed_saps}")
-                elif not meta.get("sap_code"):
-                    print("  ВНИМАНИЕ: SAP не определён в файле; цены нельзя уверенно привязать к магазину")
+                print(f"Импорт: {path.name}: строк {added}, уникальных товаров {unique}")
             except Exception as exc:
                 errors.append({"file": str(path), "error": str(exc)})
                 print(f"ОШИБКА {path.name}: {exc}")
