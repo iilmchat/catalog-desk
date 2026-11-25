@@ -57,8 +57,9 @@ def table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 def _v10_ddl(sql: str) -> str:
     """Преобразовать DDL V9 в DDL V10: chain + расширенные ключи."""
-    lines = [line for line in sql.splitlines() if "FOREIGN KEY" not in line.upper()]
-    text = "\n".join(lines)
+    # Keep foreign-key constraints intact. Parent tables are rebuilt before
+    # dependent tables in TABLES_WITH_CHAIN; enforcement is restored afterwards.
+    text = sql
 
     # Вставляем chain сразу после "CREATE TABLE <name> (".
     text = re.sub(
@@ -196,6 +197,11 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> bool:
             "INSERT INTO schema_meta(key,value) VALUES('schema_version','10') "
             "ON CONFLICT(key) DO UPDATE SET value='10'"
         )
+        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise sqlite3.IntegrityError(
+                f"V10 migration produced {len(violations)} foreign-key violation(s)"
+            )
         conn.commit()
         return True
     except Exception:
