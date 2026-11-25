@@ -170,6 +170,7 @@ class MigrationV10Tests(unittest.TestCase):
 
             # The physical columns are already V10; only the metadata is stale.
             self.assertFalse(migrations.migrate_v9_to_v10(conn))
+            self.assertFalse(conn.in_transaction)
             self.assertEqual(
                 conn.execute(
                     "SELECT value FROM schema_meta WHERE key='schema_version'"
