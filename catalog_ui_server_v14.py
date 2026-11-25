@@ -335,7 +335,13 @@ def schedule_data() -> dict:
             SELECT chain,run_date,status,created_at,finished_at FROM daily_runs
             ORDER BY run_date DESC, chain
         """).fetchall()
-        return {"chains": list(STORES), "runs": [dict(r) for r in rows]}
+        return {
+            "chains": list(STORES),
+            "runs": [dict(r) for r in rows],
+            "execution_mode": "manual_dom_only",
+            "automatic_collection": False,
+            "note": "Это план ручных выгрузок. Сбор выполняется в открытом браузере из видимого DOM; расписание само не запускает браузерный сбор.",
+        }
     finally:
         conn.close()
 
@@ -346,12 +352,13 @@ def set_schedule(data: dict) -> dict:
     conn = connect_db()
     try:
         conn.execute(
-            """INSERT INTO daily_runs(chain,run_date,status,created_at) VALUES(?,?,'pending',?)
+            """INSERT INTO daily_runs(chain,run_date,status,created_at) VALUES(?,?,'planned_manual',?)
                ON CONFLICT(chain,run_date) DO UPDATE SET status=excluded.status""",
             (chain, run_date, now_iso()),
         )
         conn.commit()
-        return {"chain": chain, "run_date": run_date, "status": "pending"}
+        return {"chain": chain, "run_date": run_date, "status": "planned_manual",
+                "automatic_collection": False}
     finally:
         conn.close()
 
