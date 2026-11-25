@@ -152,7 +152,7 @@
   }
 
   function extractComposition(productText) {
-    const match = productText.match(/Состав\s*([\s\S]{3,900}?)(?=\n\s*(?:Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)\b|$)/i);
+    const match = productText.match(/Состав\s*([\s\S]{3,900}?)(?=Показать\s*полностью|Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса|$)/i);
     return match ? clean(match[1]) : null;
   }
 
@@ -228,7 +228,7 @@
     const pluMatch = location.pathname.match(/--(\d+)(?:\/|$)/);
     if (!state.active || !pluMatch || String(state.current_plu || '') !== pluMatch[1]) return;
 
-    showNotice(`Пакет V14: загружаю PLU ${pluMatch[1]}…`);
+    showNotice(`Пакет V15: загружаю PLU ${pluMatch[1]}…`);
     await sleep(3500);
     if (isChallengePage()) {
       await reportFailure({ captcha: true, reason: 'Проверка X5 появилась во время загрузки товара.' }).catch(() => {});
