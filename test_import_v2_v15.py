@@ -107,6 +107,25 @@ class ExportV2Tests(unittest.TestCase):
         mixed_meta = mod.load_json_rows(Path(mixed))[1]
         self.assertEqual(mixed_meta["chain"], "perekrestok")
 
+    def test_import_rejects_wrong_sap_domain_and_mixed_chain(self):
+        db = mod.CatalogDB(mod.DB_PATH)
+        try:
+            rows, meta = mod.load_json_rows(self.payload_path)
+            wrong_sap = [dict(row, **{"SAP магазина": "35XY"}) for row in rows]
+            with self.assertRaisesRegex(ValueError, "не относится к сети"):
+                db.import_rows("wrong-sap-hash", "wrong-sap.json", wrong_sap, meta)
+
+            wrong_domain = dict(meta)
+            wrong_domain["source_url"] = "https://5ka.ru/catalog/test--ABC123/?page=1"
+            with self.assertRaisesRegex(ValueError, "URL относится к сети"):
+                db.import_rows("wrong-domain-hash", "wrong-domain.json", rows, wrong_domain)
+
+            mixed = [dict(rows[0], **{"Сеть": "5ka"})]
+            with self.assertRaisesRegex(ValueError, "смешаны сети"):
+                db.import_rows("mixed-chain-hash", "mixed.json", mixed, meta)
+        finally:
+            db.close()
+
     def test_import_into_v10_and_csv_has_chain_column(self):
         db = mod.CatalogDB(mod.DB_PATH)
         try:
