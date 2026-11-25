@@ -61,8 +61,8 @@ def _v10_ddl(sql: str) -> str:
     # new composite key. Parent tables are rebuilt before dependent tables.
     text = sql
     text = re.sub(
-        r"FOREIGN\\s+KEY\\s*\\(\\s*sap_code\\s*,\\s*plu\\s*\\)\\s*"
-        r"REFERENCES\\s+products\\s*\\(\\s*sap_code\\s*,\\s*plu\\s*\\)",
+        r"FOREIGN\s+KEY\s*\(\s*sap_code\s*,\s*plu\s*\)\s*"
+        r"REFERENCES\s+products\s*\(\s*sap_code\s*,\s*plu\s*\)",
         "FOREIGN KEY (chain, sap_code, plu) REFERENCES products(chain, sap_code, plu)",
         text,
         flags=re.IGNORECASE,
