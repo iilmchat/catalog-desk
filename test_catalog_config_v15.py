@@ -159,6 +159,28 @@ class MigrationV10Tests(unittest.TestCase):
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM products").fetchone()[0], 2)
         conn.close()
 
+    def test_existing_chain_schema_reconciles_stale_schema_version(self):
+        conn = sqlite3.connect(self.db)
+        try:
+            self.assertTrue(migrations.migrate_v9_to_v10(conn))
+            conn.execute(
+                "UPDATE schema_meta SET value='9' WHERE key='schema_version'"
+            )
+            conn.commit()
+
+            # The physical columns are already V10; only the metadata is stale.
+            self.assertFalse(migrations.migrate_v9_to_v10(conn))
+            self.assertEqual(
+                conn.execute(
+                    "SELECT value FROM schema_meta WHERE key='schema_version'"
+                ).fetchone()[0],
+                "10",
+            )
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM products").fetchone()[0], 2)
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+        finally:
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
