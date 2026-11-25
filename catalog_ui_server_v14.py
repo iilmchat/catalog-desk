@@ -1927,6 +1927,8 @@ def batch_record(payload: dict) -> dict:
         raise ValueError("Пакетный сбор приостановлен. Возобновите его в Catalog Desk.")
     if str(state.get("current_chain") or chain) != chain:
         raise ValueError(f"Ожидается пакет сети {state.get('current_chain')}, получен {chain}")
+    if str(state.get("current_sap") or sap) != sap:
+        raise ValueError(f"Ожидается SAP {state.get('current_sap')}, получен {sap}. Запись не принята.")
     if str(state.get("current_plu") or "") != plu:
         raise ValueError(f"Ожидался PLU {state.get('current_plu')}, получен {plu}. Запись не принята.")
     detail_dir = chain_path(chain, "details")
