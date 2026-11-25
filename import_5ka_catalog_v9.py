@@ -936,21 +936,22 @@ def export_outputs(db: CatalogDB, expected_sap: str, chain: str = DEFAULT_CHAIN)
     xlsx_path = OUTPUT_XLSX if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10.xlsx"
     csv_path = OUTPUT_CSV if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10.csv"
     report_path = REPORT_JSON if chain == DEFAULT_CHAIN else BASE_DIR / f"catalog_{chain}_v10_report.json"
-    products = db.products()
+    # Export artifacts must be scoped to the selected chain; the SQLite DB is shared.
+    products = [p for p in db.products() if p.get("Сеть") == chain]
     # Optional V11 enriched product details live in the same SQLite file.
     detail_rows = []
     try:
         raw_details = db.conn.execute("""SELECT chain,sap_code,plu,product_name,description,composition,nutrition_json,
             attributes_json,details_text,product_url,image_url,first_imported_at,last_imported_at,last_captured_at
-            FROM product_details ORDER BY sap_code,product_name COLLATE NOCASE""").fetchall()
+            FROM product_details WHERE chain=? ORDER BY sap_code,product_name COLLATE NOCASE""", (chain,)).fetchall()
         detail_rows = [dict(zip(DETAIL_COLUMNS, tuple(r))) for r in raw_details]
     except sqlite3.OperationalError:
         detail_rows = []
-    history = db.history()
-    changes = db.changes()
-    events = db.events()
-    exports = db.exports()
-    progress = db.progress(products)
+    history = [r for r in db.history() if r.get("Сеть") == chain]
+    changes = [r for r in db.changes() if r.get("Сеть") == chain]
+    events = [r for r in db.events() if r.get("Сеть") == chain]
+    exports = [r for r in db.exports() if r.get("Сеть") == chain]
+    progress = [r for r in db.progress(products) if r.get("Сеть") == chain]
 
     products_df = pd.DataFrame(products, columns=PRODUCT_COLUMNS)
     history_df = pd.DataFrame(history, columns=HISTORY_COLUMNS)
@@ -962,7 +963,7 @@ def export_outputs(db: CatalogDB, expected_sap: str, chain: str = DEFAULT_CHAIN)
     image_rows = []
     try:
         raw_images = db.conn.execute("""SELECT chain,sap_code,plu,image_order,image_url,local_file,source,first_seen_at,last_seen_at
-            FROM product_images ORDER BY sap_code,plu,image_order,id""").fetchall()
+            FROM product_images WHERE chain=? ORDER BY sap_code,plu,image_order,id""", (chain,)).fetchall()
         image_rows = [dict(zip(IMAGE_COLUMNS, tuple(r))) for r in raw_images]
     except sqlite3.OperationalError:
         image_rows = []
