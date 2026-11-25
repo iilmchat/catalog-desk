@@ -77,7 +77,8 @@ class MigrationV10Tests(unittest.TestCase):
         );
         CREATE TABLE product_categories(
             sap_code TEXT, plu TEXT, category TEXT,
-            PRIMARY KEY(sap_code,plu,category)
+            PRIMARY KEY(sap_code,plu,category),
+            FOREIGN KEY(sap_code,plu) REFERENCES products(sap_code,plu) ON DELETE CASCADE
         );
         CREATE TABLE price_history(
             id INTEGER PRIMARY KEY AUTOINCREMENT, source_hash TEXT, sap_code TEXT,
