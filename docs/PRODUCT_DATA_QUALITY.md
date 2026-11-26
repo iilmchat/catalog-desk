@@ -32,7 +32,10 @@ retailer category names and regression tests, not title-only heuristics.
 Applicability and extraction outcome are separate dimensions.
 
 - Applicability: `applicable`, `not_applicable`, `unknown`.
-- Extraction outcome: `captured`, `not_found`, `not_visible`, `parse_error`.
+- Extraction outcome: `captured`, `not_found`, `not_visible`, `parse_error`. The current
+DOM collectors emit `captured` / `not_found` (and `not_applicable` where appropriate);
+`not_visible` and `parse_error` are reserved for source-specific collectors that can
+reliably distinguish those cases.
 
 Known `not_applicable` fields are excluded from the completeness denominator.
 Unknown applicability is not treated as N/A. A product with unknown class cannot
@@ -64,7 +67,9 @@ Retailer pages may use the generic label "Состав" for different concepts.
 
 The original visible page text remains in `details_text`. The metadata records
 classification basis, confidence, field applicability, extraction outcome and
-source URL.
+source URL. Ingredient and sugar analysis is restricted to confirmed food / pet-food
+classes; non-food and unresolved legacy compositions are excluded rather than
+interpreted as ingredients.
 
 ## Completeness
 
