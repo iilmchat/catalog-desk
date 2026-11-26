@@ -643,7 +643,17 @@ def quality_fields(row: dict) -> dict:
         sources["описание"] = "анализ текста карточки"
     if not row.get("nutrition_json") and nutrition:
         sources["БЖУ"] = "анализ текста карточки"
-    legacy_fields = {key: value["status"] == "captured" for key, value in policy["fields"].items()}
+    legacy_fields = {
+        "название": policy["fields"]["name"]["status"] == "captured",
+        "цена": policy["fields"]["price"]["status"] == "captured",
+        "фото": policy["fields"]["image"]["status"] == "captured",
+        "состав": policy["fields"]["ingredients"]["status"] == "captured",
+        "материалы": policy["fields"]["materials"]["status"] == "captured",
+        "БЖУ": policy["fields"]["nutrition"]["status"] == "captured",
+        "вес": policy["fields"]["weight"]["status"] == "captured",
+        "срок хранения": policy["fields"]["shelf_life"]["status"] == "captured",
+        "бренд": policy["fields"]["brand"]["status"] == "captured",
+    }
     return {
         "percent": policy["percent"], "completed": policy["completed"],
         "required": policy["required"], "product_class": classification,
