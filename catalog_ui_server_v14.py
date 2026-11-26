@@ -1369,9 +1369,16 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
         "materials_text": materials, "unclassified_composition_text": unclassified,
         "composition_kind": destination,
         "extraction_status": {
+            "name": "captured" if prod.get("name") else "not_found",
+            "price": "captured" if prod.get("current_price") is not None else "not_found",
+            "image": "captured" if prod.get("image_url") else "not_found",
             "ingredients": "captured" if ingredients else ("not_applicable" if applicability.get("ingredients") == "not_applicable" else "not_found"),
             "materials": "captured" if materials else ("not_applicable" if applicability.get("materials") == "not_applicable" else "not_found"),
             "nutrition": "captured" if has_complete_nutrition(nutrition) else ("not_applicable" if applicability.get("nutrition") == "not_applicable" else "not_found"),
+            "weight": "captured" if any(attrs.get(k) for k in ("Вес", "Масса нетто", "Объем", "Объём")) else "not_found",
+            "shelf_life": "captured" if attrs.get("Срок хранения") or attrs.get("Срок годности") else ("not_applicable" if applicability.get("shelf_life") == "not_applicable" else "not_found"),
+            "brand": "captured" if attrs.get("Бренд") else "not_found",
+            "description": "captured" if prod.get("description") else "not_found",
         },
         "provenance": {"source_url": prod.get("product_url"), "captured_at": prod.get("captured_at") or None},
     }
