@@ -62,6 +62,37 @@ class SingleDetailRefreshV16Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mod.claim_detail_refresh({"token": [created["token"]]})
 
+    def test_queue_summary_uses_detail_records_and_reports_coverage_buckets(self):
+        conn = sqlite3.connect(mod.DB_PATH)
+        conn.execute(
+            """INSERT INTO product_details(
+                chain,sap_code,plu,product_name,composition,description,nutrition_json,
+                attributes_json,details_text,first_imported_at,last_imported_at,last_captured_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                "perekrestok", "XSEO", "100001", "Перекрёсток",
+                "Состав товара", "Описание товара",
+                '{"Белки":"14.5","Жиры":"23.0","Углеводы":"4.1","Ккал":"284"}',
+                '{"Бренд":"Тест"}', "Полный текст карточки",
+                "2026-11-26", "2026-11-26", "2026-11-26",
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        result = mod.enrichment_queue({
+            "chain": ["perekrestok"], "status": ["all"], "completeness": ["all"]
+        })
+        summary = result["summary"]
+
+        # The queue task is still pending, but an actual details record exists.
+        self.assertEqual(summary["status_counts"]["pending"], 1)
+        self.assertEqual(summary["processed"], 1)
+        self.assertEqual(summary["pending"], 0)
+        self.assertEqual(summary["processed_percent"], 100.0)
+        self.assertEqual(summary["coverage_counts"]["100"], 1)
+        self.assertEqual(summary["coverage_counts"]["0"], 0)
+
     def test_refresh_rejects_wrong_sap_and_wrong_product_identity(self):
         with self.assertRaises(ValueError):
             mod.create_detail_refresh_request({
