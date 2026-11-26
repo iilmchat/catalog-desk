@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Локальный интерфейс каталога Пятёрочки (V14.0, Python stdlib + чистый JS + контролируемый batch enrichment).
+"""Локальный интерфейс Catalog Desk V16.0 (Python stdlib + чистый JS + одиночное и пакетное обогащение).
 
 Запуск: python catalog_ui_server_v14.py
 Открывается только на 127.0.0.1, без внешних CDN и npm.

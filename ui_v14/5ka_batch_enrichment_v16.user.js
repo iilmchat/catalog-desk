@@ -218,6 +218,9 @@
     try {
       const requestInfo = await request('GET', '/api/details/refresh/claim?token=' + encodeURIComponent(token));
       if (requestInfo.chain !== CHAIN) throw new Error('Токен предназначен для другой торговой сети.');
+      const expectedPath = new URL(requestInfo.product_url).pathname.replace(/\/+$/, '');
+      const actualPath = location.pathname.replace(/\/+$/, '');
+      if (expectedPath !== actualPath) throw new Error('URL карточки не совпадает с одноразовым запросом.');
       const pluMatch = location.pathname.match(/--(\d+)(?:\/|$)/);
       if (!pluMatch || String(requestInfo.plu) !== pluMatch[1]) {
         throw new Error('Открытая карточка не совпадает с PLU одноразового запроса.');
