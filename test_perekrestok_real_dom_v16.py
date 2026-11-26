@@ -34,11 +34,12 @@ class ProductDOM(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
+        void_tags = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
         if a.get("data-qa") == "product-screen":
             self.in_product = True
             self.depth = 1
             self.product_roots += 1
-        elif self.in_product:
+        elif self.in_product and tag not in void_tags:
             self.depth += 1
 
         if self.in_product and a.get("data-qa") == "product-card-title":
@@ -54,17 +55,12 @@ class ProductDOM(HTMLParser):
             self.images.append(a.get("src") or a.get("data-src"))
         if self.in_product and a.get("itemprop") == "price":
             self.price = a.get("content")
-        if self.in_product and tag == "a" and "/brands/" in a.get("href", ""):
-            self.in_brand = True
-
         if not self.in_product and a.get("data-qa") == "promo-listing-carousel":
             self.promo_outside_product = True
 
     def handle_endtag(self, tag):
         if self.in_title and tag == "h1":
             self.in_title = False
-        if self.in_brand and tag == "a":
-            self.in_brand = False
         if self.in_attr:
             self.attr_depth -= 1
             if self.attr_depth == 0:
@@ -85,8 +81,6 @@ class ProductDOM(HTMLParser):
             value = " ".join(data.split())
             if value:
                 self.attr_parts.append(value)
-        if self.in_brand:
-            self.brand = (self.brand or "") + data
 
 
 class PerekrestokRealDOMTests(unittest.TestCase):
@@ -102,7 +96,7 @@ class PerekrestokRealDOMTests(unittest.TestCase):
         self.assertIn(EXPECTED_NAME, " ".join(self.dom.title_text))
 
     def test_brand_price_images_and_nutrition(self):
-        self.assertIn("Зелёная Линия", self.dom.brand or "")
+        self.assertEqual(self.dom.attrs.get("Бренд"), "Зелёная Линия")
         self.assertEqual(self.dom.price, "369.99")
         self.assertGreaterEqual(len([x for x in self.dom.images if x]), 1)
         self.assertEqual(self.dom.attrs.get("Вес"), "0.15 кг")
@@ -121,6 +115,7 @@ class PerekrestokRealDOMTests(unittest.TestCase):
         self.assertTrue(self.dom.promo_outside_product)
         self.assertNotIn("Вам понравится", self.text)
         self.assertNotIn("Похожие товары", self.text)
+        self.assertNotIn("Отзывы о товаре", self.text)
 
     def test_dom_contract_selectors_exist(self):
         self.assertIn('data-qa="product-screen"', self.html)
