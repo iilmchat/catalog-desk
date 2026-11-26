@@ -25,7 +25,12 @@ alone is not used to infer a class. An unmapped category remains `unknown` and
 requires review; it must not silently become non-food.
 
 The current keyword map is a conservative first version. Extend it using observed
-retailer category names and regression tests, not title-only heuristics.
+retailer category names and regression tests, not title-only heuristics. The saved
+Perekrestok page for PLU 4414429 exposes the breadcrumb category «Для Нового года»,
+which is mapped to `non_food`. The saved Pyaterochka page for PLU 4275044 exposes
+only «Главная / Каталог / product» and no category breadcrumb; despite the word
+«пищевой» in its title, it remains `unknown` until explicit category evidence is
+available.
 
 ## Applicability and extraction outcome
 
