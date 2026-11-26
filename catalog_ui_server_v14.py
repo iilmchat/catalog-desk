@@ -1922,7 +1922,11 @@ def enrichment_status(params: dict | None = None) -> dict:
                 missing_gallery += 1
 
         detail_rows = conn.execute(
-            "SELECT * FROM product_details WHERE chain=?",
+            """SELECT d.*,p.name AS name,p.current_price,p.image_url,p.categories
+               FROM product_details d
+               LEFT JOIN products p
+                 ON p.chain=d.chain AND p.sap_code=d.sap_code AND p.plu=d.plu
+               WHERE d.chain=?""",
             (chain,),
         ).fetchall()
         detail_keys = {(str(r["sap_code"]), str(r["plu"])) for r in detail_rows}
