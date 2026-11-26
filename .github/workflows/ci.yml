@@ -32,3 +32,5 @@ jobs:
           node --check ui_v14/pr_batch_enrichment_v16.user.js
           node --check 5ka_batch_enrichment_v16.user.js
           node --check pr_batch_enrichment_v16.user.js
+      - name: Test userscript extraction fixtures
+        run: node --test test_userscript_extractors.test.js
