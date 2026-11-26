@@ -1901,6 +1901,7 @@ def enrichment_queue(params: dict) -> dict:
             score, filled = _detail_coverage(item)
             item["detail_percent"] = score
             item["detail_blocks"] = filled
+            item["has_details_record"] = bool(item.get("has_details_record"))
             item["has_details"] = score > 0
             item["quality"] = quality_fields(item)
             item["task_status"] = item.get("task_status") or "pending"
@@ -1914,15 +1915,22 @@ def enrichment_queue(params: dict) -> dict:
         for item in all_items:
             status_counts[item["task_status"]] = status_counts.get(item["task_status"], 0) + 1
         total_products = len(all_items)
-        processed_count = status_counts.get("processed", 0)
+        # Summary progress reflects actual product_details records, not queue actions.
+        processed_count = sum(1 for x in all_items if x["has_details_record"])
+        pending_details_count = total_products - processed_count
+        coverage_counts = {
+            str(percent): sum(1 for x in all_items if x["detail_percent"] == percent)
+            for percent in (100, 80, 60, 40, 20, 0)
+        }
         summary = {
             "total": total_products, "processed": processed_count,
-            "pending": status_counts.get("pending", 0), "opened": status_counts.get("opened", 0),
+            "pending": pending_details_count, "opened": status_counts.get("opened", 0),
             "exported": status_counts.get("exported", 0), "skipped": status_counts.get("skipped", 0),
             "with_any_details": sum(1 for x in all_items if x["detail_percent"] > 0),
             "without_details": sum(1 for x in all_items if x["detail_percent"] == 0),
             "average_percent": round(sum(x["detail_percent"] for x in all_items) / max(1, total_products), 1),
             "processed_percent": round(processed_count / max(1, total_products) * 100, 1),
+            "coverage_counts": coverage_counts,
             "status_counts": status_counts,
         }
 
