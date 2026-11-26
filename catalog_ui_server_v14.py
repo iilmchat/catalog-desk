@@ -663,7 +663,7 @@ def quality_fields(row: dict) -> dict:
         "contradictions": weight_contradictions(
             str(row.get("name") or row.get("product_name") or ""), attrs
         ),
-        "disclaimer": "Полнота учитывает только обязательные применимые поля; N/A исключается из знаменателя.",
+        "disclaimer": "Полнота учитывает только обязательные применимые поля; N/A исключается из знаменателя. Анализ состава эвристический, не лабораторная проверка продукта.",
         "policy_version": policy["policy_version"],
     }
 
