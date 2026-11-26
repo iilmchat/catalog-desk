@@ -1,8 +1,8 @@
-# Catalog Desk V16.0
+# Catalog Desk V16.1.0
 
 **Локальная аналитическая система товарного каталога: две сети, история цен, состав, БЖУ, фотографии, контроль качества и локальный API.**
 
-© 2026 Catalog Desk · V16.0
+© 2026 Catalog Desk · V16.1.0
 
 **Репозиторий:** https://github.com/iilmchat/catalog-desk
 

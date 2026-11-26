@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Локальный интерфейс Catalog Desk V16.0 (Python stdlib + чистый JS + одиночное и пакетное обогащение).
+"""Локальный интерфейс Catalog Desk V16.1.0 (Python stdlib + чистый JS + одиночное и пакетное обогащение).
 
 Запуск: python catalog_ui_server_v14.py
 Открывается только на 127.0.0.1, без внешних CDN и npm.
@@ -2575,7 +2575,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(photo_path)
             if path == "/files/excel": return self._file(BASE_DIR / "pyaterochka_catalog_v9.xlsx", attachment=True)
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
-            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "16.0-dev", "chains": list(STORES)})
+            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "16.1.0-dev", "chains": list(STORES)})
             if path == "/api/stores": return self._json(200, stores_data())
             if path == "/api/compare": return self._json(200, compare_data(params))
             if path == "/api/search": return self._json(200, search_products(params))

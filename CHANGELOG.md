@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [V16.1.0] — 2026-11-26
+
 ### Added
 - В массовой очереди показывается распределение карточек по полноте: 100%, 80%, 60%, 40%, 20% и 0%.
 - Карточку товара можно открыть нажатием на её строку или название в массовой очереди.
@@ -146,7 +148,8 @@
 
 ---
 
-[Unreleased]: https://github.com/iilmchat/catalog-desk/compare/v15.0...HEAD
+[Unreleased]: https://github.com/iilmchat/catalog-desk/compare/v16.1.0...HEAD
+[V16.1.0]: https://github.com/iilmchat/catalog-desk/compare/v15.0...v16.1.0
 [V15.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v15.0
 [V14.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v14.0
 [V9]: https://github.com/iilmchat/catalog-desk/releases/tag/v9
