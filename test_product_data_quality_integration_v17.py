@@ -22,6 +22,22 @@ class ProductDataQualityIntegrationV17Tests(unittest.TestCase):
         self.assertEqual(meta["composition_kind"], "materials")
         self.assertEqual(attrs["_catalog_meta"]["field_applicability"]["nutrition"], "not_applicable")
 
+    def test_unknown_composition_is_preserved_but_not_indexed_as_ingredients(self):
+        composition, materials, attrs, meta = server._prepare_product_semantics(
+            {"name": "Неизвестный товар", "composition": "Полимер, металл"},
+            {}, {}, "Состав Полимер, металл"
+        )
+        self.assertIsNone(composition)
+        self.assertIsNone(materials)
+        self.assertEqual(meta["unclassified_composition_text"], "Полимер, металл")
+        quality = server.quality_fields({
+            "name": "Неизвестный товар", "composition": "Полимер, металл",
+            "current_price": 10, "image_url": "https://example.invalid/item.jpg",
+            "attributes": attrs, "nutrition": {},
+        })
+        self.assertFalse(quality["fields"]["состав"])
+        self.assertEqual(quality["field_status"]["ingredients"]["applicability"], "unknown")
+
     def test_non_food_complete_card_can_reach_100_without_nutrition(self):
         product = {
             "name": "Ёлочка искусственная Маркет, 25х25х50см",
