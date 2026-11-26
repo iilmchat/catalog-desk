@@ -81,6 +81,34 @@
     return matches / Math.min(aa.length, bb.length);
   }
 
+  function classifyProductFromTaxonomy(categoryPath) {
+    const value = clean(categoryPath).toLowerCase();
+    const includesAny = terms => terms.some(term => value.includes(term));
+    if (includesAny(['корм для животных','корма для животных','корм для кошек','корм для собак','зоокорм','лакомства для животных'])) {
+      return { product_class: 'pet_food', classification_basis: 'category_taxonomy', classification_confidence: 1 };
+    }
+    if (includesAny(['бытовая химия','товары для дома','дом и интерьер','новогодние товары','сезонные товары','игрушки','посуда','текстиль','электроника','сад и огород','садовые товары','декор','искусственные елки','искусственные ёлки','канцтовары','товары для животных','косметика','гигиена','уход за домом','хозтовары'])) {
+      return { product_class: 'non_food', classification_basis: 'category_taxonomy', classification_confidence: 1 };
+    }
+    if (includesAny(['кафе','продукты','продукт','фрукты','овощи','мяс','рыб','молоч','сыр','колбас','хлеб','выпеч','бакале','напит','сок','сладост','кондитер','заморожен','готовая еда','гастроном','яйц','орех','круп','макарон','консервы'])) {
+      return { product_class: 'food', classification_basis: 'category_taxonomy', classification_confidence: 1 };
+    }
+    return { product_class: 'unknown', classification_basis: value ? 'unmapped_taxonomy' : 'no_taxonomy', classification_confidence: 0 };
+  }
+
+  function applicabilityForProductClass(productClass) {
+    const result = { nutrition: 'unknown', ingredients: 'unknown', materials: 'unknown', shelf_life: 'unknown', weight: 'applicable', brand: 'applicable' };
+    if (productClass === 'food' || productClass === 'pet_food') {
+      result.nutrition = 'applicable'; result.ingredients = 'applicable';
+      result.materials = 'not_applicable';
+      result.shelf_life = productClass === 'food' ? 'applicable' : 'unknown';
+    } else if (productClass === 'non_food') {
+      result.nutrition = 'not_applicable'; result.ingredients = 'not_applicable';
+      result.materials = 'applicable'; result.shelf_life = 'not_applicable';
+    }
+    return result;
+  }
+
   function productRootAndText() {
     const main = document.querySelector('main,[role="main"]') || document.body;
     const title = main.querySelector('h1') || document.querySelector('h1');
@@ -182,7 +210,14 @@
     const plu = match[1];
     const gallery = extractGallery(main, name);
     const nutrition = parseNutrition(productText);
-    const composition = extractComposition(productText);
+    const breadcrumb = document.querySelector('nav[aria-label="breadcrumb"], [aria-label="breadcrumb"], [data-qa*="breadcrumb"]');
+    const categoryPath = clean(breadcrumb?.innerText || breadcrumb?.textContent || '');
+    const classification = classifyProductFromTaxonomy(categoryPath);
+    const fieldApplicability = applicabilityForProductClass(classification.product_class);
+    const sourceComposition = extractComposition(productText);
+    const composition = ['food', 'pet_food'].includes(classification.product_class) ? sourceComposition : null;
+    const materials = classification.product_class === 'non_food' ? sourceComposition : null;
+    const unclassifiedComposition = classification.product_class === 'unknown' ? sourceComposition : null;
     const attributes = extractAttributes(productText, nutrition);
     const imageUrl = gallery[0]?.url || null;
     return {
@@ -201,9 +236,24 @@
         image_alt: gallery[0]?.alt || name,
         image_gallery: gallery,
         composition,
+        materials,
         description: null,
         nutrition,
         attributes,
+        category_path: categoryPath,
+        product_class: classification.product_class,
+        classification_basis: classification.classification_basis,
+        classification_confidence: classification.classification_confidence,
+        field_applicability: fieldApplicability,
+        catalog_metadata: {
+          schema_version: 1, policy_version: '1',
+          product_class: classification.product_class,
+          classification_basis: classification.classification_basis,
+          classification_confidence: classification.classification_confidence,
+          category_path: categoryPath, field_applicability: fieldApplicability,
+          materials_text: materials, unclassified_composition_text: unclassifiedComposition,
+          composition_kind: classification.product_class === 'non_food' ? 'materials' : (classification.product_class === 'unknown' ? 'unclassified' : 'ingredients')
+        },
         details_text: clean(productText)
       }
     };
@@ -298,6 +348,14 @@
       await request('POST', '/api/batch/fail', { captcha: false, reason: String(error.message || error) }).catch(() => {});
       showNotice(`Пакет остановлен: ${error.message || error}. Проверь локальный сервер и карточку товара.`, true);
     }
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      clean, parseNutrition, extractComposition,
+      classifyProductFromTaxonomy, applicabilityForProductClass
+    };
+    return;
   }
 
   main();
