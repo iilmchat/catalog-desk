@@ -32,9 +32,11 @@ class ProductDataPolicyV17Tests(unittest.TestCase):
         }
         result = calculate_completeness("non_food", values, applicability)
         self.assertEqual(result["percent"], 100)
-        self.assertEqual(result["completed"], 6)
-        self.assertEqual(result["required"], 6)
+        self.assertEqual(result["completed"], 5)
+        self.assertEqual(result["required"], 5)
         self.assertEqual(result["fields"]["nutrition"]["status"], "not_applicable")
+        self.assertEqual(result["fields"]["materials"]["status"], "captured")
+        self.assertFalse(result["fields"]["materials"]["required"])
         self.assertFalse(result["classification_review_required"])
 
     def test_food_requires_nutrition_and_ingredients(self):
