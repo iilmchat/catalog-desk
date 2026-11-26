@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Added
+- Playwright/Chromium smoke harness для captured pages обеих сетей: настоящий browser DOM/layout/innerText, computed visibility и раскрытие скрытого описания кликом. Тесты полностью offline и не вызывают локальный API, userscript batch или single-refresh.
+
+### Added
 - DOM-backed regression harness на LinkeDOM и captured HTML fixtures обеих сетей: проверка userscript payload, изоляции product-screen, секций description/composition, скрытых блоков и исключения рекомендаций/отзывов. Harness запускается в CI; layout и `innerText` моделируются shim-функциями, это не полноценный браузерный движок.
 
 ### Fixed
