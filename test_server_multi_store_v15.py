@@ -86,7 +86,7 @@ class MultiStoreBatchTests(unittest.TestCase):
             "store": {"sap_code": "XSEO"},
             "product": {
                 "plu": "100001",
-                "name": "Перекрёсток",
+                "name": "Перекрёсток", "category_path": "Молочные продукты",
                 "product_url": "https://www.perekrestok.ru/product/test--100001",
                 "composition": "Сыры, масло сливочное",
                 "nutrition": {"Белки": "14.5", "Жиры": "23.0"},
@@ -152,7 +152,7 @@ class MultiStoreBatchTests(unittest.TestCase):
 
         self.assertEqual(cross["products_without_details"], 0)
         self.assertEqual(cross["products_with_details"], 1)
-        self.assertEqual(cross["average_detail_percent"], 40.0)
+        self.assertEqual(cross["average_detail_percent"], 20.0)  # unknown class cannot count N/A as complete
 
         self.assertEqual(five["task_counts"]["pending"], 1)
         self.assertEqual(five["task_counts"]["opened"], 0)
