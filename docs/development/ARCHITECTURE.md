@@ -1,6 +1,6 @@
 # Архитектура Catalog Desk
 
-**Версия документа:** 1.0 · **Текущая реализация:** V15.1 (ветка hardening)
+**Версия документа:** 1.0 · **Текущая реализация:** V16.0
 **Связанные документы:** [RULES.md](RULES.md) · [ADR](adr/README.md) · [дизайн V15](v15/DESIGN.md)
 
 ---
@@ -9,8 +9,8 @@
 
 ```
 браузер пользователя
- ├─ Пятёрочка: 5ka_export_* + 5ka_batch_enrichment_v14.user.js
- └─ Перекрёсток: pr_export_* + pr_batch_enrichment_v15.user.js
+ ├─ Пятёрочка: 5ka_export_* + 5ka_batch_enrichment_v16.user.js
+ └─ Перекрёсток: pr_export_* + pr_batch_enrichment_v16.user.js
                    │
                    ▼ только видимый DOM
               JSON Export v2
@@ -25,6 +25,8 @@
                               │
                          Excel / CSV
 ```
+
+**Одиночное обновление V16:** интерфейс выпускает одноразовый токен, связанный с точным `(chain, sap_code, plu)`. Он действует 10 минут и принимается один раз. Отдельный импорт обновляет `product_details`, `product_detail_history`, `product_detail_imports` и `product_images`, не изменяя `enrichment_tasks`, `enrichment_task_events` или `enrichment_batch_states`.
 
 **Принцип сбора:** bookmarklet/userscript читает только то, что уже отображено на открытой странице. Скрытые API магазина, чтение cookies и обход CAPTCHA не используются. CAPTCHA означает остановку и ручную проверку.
 
