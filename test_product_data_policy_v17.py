@@ -61,7 +61,7 @@ class ProductDataPolicyV17Tests(unittest.TestCase):
     def test_generic_composition_label_routes_by_product_class(self):
         self.assertEqual(composition_destination("food"), "ingredients")
         self.assertEqual(composition_destination("non_food"), "materials")
-        self.assertEqual(composition_destination("unknown"), "ingredients")
+        self.assertEqual(composition_destination("unknown"), "unclassified")
 
 
 if __name__ == "__main__":
