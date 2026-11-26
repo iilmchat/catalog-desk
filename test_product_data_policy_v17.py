@@ -12,6 +12,10 @@ class ProductDataPolicyV17Tests(unittest.TestCase):
         self.assertEqual(result["product_class"], "food")
         self.assertEqual(result["classification_basis"], "category_taxonomy")
 
+    def test_taxonomy_normalizes_repeated_whitespace(self):
+        result = classify_product(categories="  Новогодние   товары  ")
+        self.assertEqual(result["product_class"], "non_food")
+
     def test_non_food_category_is_classified_from_taxonomy_not_title(self):
         result = classify_product(categories="Новогодние товары")
         self.assertEqual(result["product_class"], "non_food")
@@ -20,7 +24,7 @@ class ProductDataPolicyV17Tests(unittest.TestCase):
     def test_pet_food_has_separate_class(self):
         self.assertEqual(classify_product(categories="Корм для кошек")["product_class"], "pet_food")
 
-    def test_non_food_nutrition_is_not_applicable_and_materials_are_required(self):
+    def test_non_food_nutrition_is_not_applicable_and_materials_are_optional(self):
         applicability = applicability_for("non_food")
         self.assertEqual(applicability["nutrition"], "not_applicable")
         self.assertEqual(applicability["ingredients"], "not_applicable")
