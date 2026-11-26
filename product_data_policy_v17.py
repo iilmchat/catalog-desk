@@ -31,7 +31,7 @@ UNIVERSAL_REQUIRED = ("name", "price", "image")
 REQUIRED_BY_CLASS = {
     "food": UNIVERSAL_REQUIRED + ("ingredients", "nutrition", "weight", "shelf_life", "brand"),
     "pet_food": UNIVERSAL_REQUIRED + ("ingredients", "nutrition", "weight", "brand"),
-    "non_food": UNIVERSAL_REQUIRED + ("materials", "weight", "brand"),
+    "non_food": UNIVERSAL_REQUIRED + ("weight", "brand"),
     # Classification itself remains a required gate; no unknown product can score 100%.
     "unknown": UNIVERSAL_REQUIRED + ("classification",),
 }
