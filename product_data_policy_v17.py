@@ -65,6 +65,12 @@ def classify_product(categories: Any = "", breadcrumbs: Any = "") -> dict:
     return {"product_class": "unknown", "classification_basis": "unmapped_taxonomy", "classification_confidence": 0.0}
 
 
+def is_food_classification(product_class: str | None = None, categories: Any = "") -> bool:
+    """Only confirmed food classes participate in ingredient / sugar analysis."""
+    cls = product_class if product_class in PRODUCT_CLASSES else classify_product(categories=categories)["product_class"]
+    return cls in {"food", "pet_food"}
+
+
 def applicability_for(product_class: str) -> dict:
     """Return applicability for domain-specific fields, not extraction status."""
     cls = product_class if product_class in PRODUCT_CLASSES else "unknown"
