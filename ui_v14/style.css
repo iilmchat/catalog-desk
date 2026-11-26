@@ -104,3 +104,15 @@
 .compare-row{display:grid;grid-template-columns:minmax(120px,1fr) 100px 100px 80px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #eef1eb;font-size:11px}
 .compare-row:last-child{border-bottom:0}.compare-row strong{color:#173a29}.compare-row .compare-price{font-weight:800;color:#31513a}
 @media(max-width:560px){.compare-row{grid-template-columns:1fr 1fr}}
+
+ 
+/* V16.0: mass queue coverage breakdown and clickable product rows */
+.mass-summary-processed{min-width:0}
+.mass-coverage-breakdown{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:9px}
+.mass-coverage-breakdown span{font-size:10px;color:#68776b;white-space:nowrap}
+.mass-coverage-breakdown b{color:#214d30;font-weight:800}
+.mass-product-link{color:#214d30;text-decoration:none;cursor:pointer}
+.mass-product-link:hover{text-decoration:underline;color:#347b43}
+#mass-queue-body tr[data-mass-row]{cursor:pointer}
+#mass-queue-body tr[data-mass-row] button,
+#mass-queue-body tr[data-mass-row] a{cursor:pointer}
