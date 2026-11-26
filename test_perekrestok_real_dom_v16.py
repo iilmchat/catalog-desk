@@ -7,7 +7,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 
-FIXTURE = Path(__file__).parent / "fixtures" / "perekrestok_4406119.html"
+FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "perekrestok_4406119.html"
 EXPECTED_NAME = "Ананас клубника голубика свежие очищенные нарезанные Зелёная Линия, 150г"
 
 
