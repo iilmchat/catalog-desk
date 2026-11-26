@@ -1,12 +1,12 @@
-# TODO_SPRINTS — шаги Catalog Desk V15
+# TODO_SPRINTS — шаги Catalog Desk V15–V17
 
 **Дата:** 2026-11-24
 **Master-план:** [TODO.md](../TODO.md)
 **Проблемы:** [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
-**Всего:** 8 шагов (S15–S22), по 2–6 задач на шаг.
+**Всего:** 9 шагов (S15–S23); S15–S22 — исторические/завершённые этапы, S23 — текущий спринт.
 
-Каждый шаг: тесты зелёные, `CHANGELOG.md` обновлён, отчёт по шагу в
-`development/reports/v15/`, отдельный коммит.
+Каждый шаг: тесты зелёные, `CHANGELOG.md` обновлён, отдельный коммит.
+Отчёты исторических этапов S15–S22 находятся в `development/reports/v15/`; для S23 использовать `development/reports/s23/`.
 
 ---
 
