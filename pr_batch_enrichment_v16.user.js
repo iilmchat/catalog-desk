@@ -84,6 +84,17 @@
   }
 
   function productRootAndText() {
+    // Prefer the retailer's semantic product boundary. Recommendations and
+    // related-product carousels are siblings of this node on current pages.
+    const productRoot = document.querySelector('[data-qa="product-screen"]');
+    if (productRoot) {
+      const title = productRoot.querySelector('[data-qa="product-card-title"]') ||
+        productRoot.querySelector('h1');
+      const productText = String(productRoot.innerText || productRoot.textContent || '');
+      return { main: productRoot, title, fullText: productText, productText };
+    }
+
+    // Compatibility fallback for older page layouts without product-screen.
     const main = document.querySelector('main,[role="main"]') || document.body;
     const title = main.querySelector('h1') || document.querySelector('h1');
     const fullText = String(main.innerText || main.textContent || '');
@@ -91,6 +102,29 @@
     const recIndex = fullText.search(recHeading);
     const productText = recIndex > 0 ? fullText.slice(0, recIndex) : fullText;
     return { main, title, fullText, productText };
+  }
+
+  function extractAttributesFromDom(root, nutrition = {}) {
+    const attrs = {};
+    for (const row of root.querySelectorAll('[data-qa="product-detail-attribute"]')) {
+      const cells = [...row.querySelectorAll('p')].map(node => clean(node.innerText || node.textContent || ''));
+      const key = (cells[0] || '').replace(/[:：]$/, '');
+      const value = cells[1] || '';
+      if (key && value) attrs[key] = value;
+    }
+    for (const [key, value] of Object.entries(nutrition)) {
+      attrs[key] = `${value}${key === 'Ккал' ? ' ккал' : ' г'}`;
+    }
+    return attrs;
+  }
+
+  function extractDescription(root, productName) {
+    // Ignore schema.org meta descriptions: on product pages they often repeat
+    // the title and are hidden SEO copy, not a customer-facing description.
+    const node = root.querySelector('[data-qa="product-description"]');
+    if (!node) return null;
+    const value = clean(node.innerText || node.textContent || '');
+    return value && value !== clean(productName) ? value : null;
   }
 
   function extractGallery(main, productName) {
@@ -185,8 +219,12 @@
     const gallery = extractGallery(main, name);
     const nutrition = parseNutrition(productText);
     const composition = extractComposition(productText);
-    const attributes = extractAttributes(productText, nutrition);
+    const domAttributes = extractAttributesFromDom(main, nutrition);
+    const attributes = Object.keys(domAttributes).length
+      ? domAttributes
+      : extractAttributes(productText, nutrition);
     const imageUrl = gallery[0]?.url || null;
+    const description = extractDescription(main, name);
     return {
       schema_version: 2,
       chain: 'perekrestok',
@@ -204,7 +242,7 @@
         image_alt: gallery[0]?.alt || name,
         image_gallery: gallery,
         composition,
-        description: null,
+        description,
         nutrition,
         attributes,
         details_text: clean(productText)
@@ -301,6 +339,14 @@
       await reportFailure({ captcha: false, reason: String(error.message || error) }).catch(() => {});
       showNotice(`Пакет остановлен: ${error.message || error}. Проверь локальный сервер и карточку товара.`, true);
     }
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      clean, parseNutrition, extractComposition, extractAttributesFromDom,
+      extractDescription, productRootAndText
+    };
+    return;
   }
 
   main();
