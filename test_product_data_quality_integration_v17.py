@@ -18,12 +18,13 @@ class ProductDataQualityIntegrationV17Tests(unittest.TestCase):
             "product_url": "https://www.perekrestok.ru/product/example--4414429",
         }
         composition, materials, attrs, meta = server._prepare_product_semantics(
-            product, {}, {"Вес": "0.37 кг", "Бренд": "Маркет"}, "Состав Полиэтилен, джут. Вес 0.37 кг"
+            product, {}, {"Вес": "0.37 кг", "Бренд": "Маркет", "Срок хранения": "не ограничен"}, "Состав Полиэтилен, джут. Вес 0.37 кг"
         )
         self.assertIsNone(composition)
         self.assertEqual(materials, "Полиэтилен, джут.")
         self.assertEqual(meta["composition_kind"], "materials")
         self.assertEqual(attrs["_catalog_meta"]["field_applicability"]["nutrition"], "not_applicable")
+        self.assertEqual(meta["extraction_status"]["shelf_life"], "not_applicable")
 
     def test_unknown_composition_is_preserved_but_not_indexed_as_ingredients(self):
         composition, materials, attrs, meta = server._prepare_product_semantics(
