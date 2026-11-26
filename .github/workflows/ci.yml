@@ -11,7 +11,7 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,3 +43,7 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Run browser-like DOM regression harness
         run: npm run test:dom
+      - name: Install Chromium for real-browser smoke tests
+        run: npx playwright install --with-deps chromium
+      - name: Run Chromium smoke tests on captured pages
+        run: npm run test:chromium

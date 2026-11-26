@@ -4,7 +4,15 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
-## [Unreleased]
+## [17.0.0] — 2026-11-26
+
+**Тема:** V17 — качество применимых данных; S23 — надёжность DOM-сбора и браузерная регрессия.
+
+### Verified
+- Ручной smoke test одноразового обновления выполнен на реальных карточках: Пятёрочка PLU `4275044` и Перекрёсток PLU `4414429`. В обоих случаях userscript подтвердил обновление; массовая очередь не затронута. Это подтверждает путь single-refresh и отсутствие побочного запуска batch, но не заменяет отдельную проверку каждого сохранённого поля и состояний раскрытия описания.
+
+### Added
+- Playwright/Chromium smoke harness для captured pages обеих сетей: настоящий browser DOM/layout/innerText, computed visibility и раскрытие скрытого описания кликом. Тесты полностью offline и не вызывают локальный API, userscript batch или single-refresh.
 
 ### Added
 - DOM-backed regression harness на LinkeDOM и captured HTML fixtures обеих сетей: проверка userscript payload, изоляции product-screen, секций description/composition, скрытых блоков и исключения рекомендаций/отзывов. Harness запускается в CI; layout и `innerText` моделируются shim-функциями, это не полноценный браузерный движок.
@@ -210,7 +218,12 @@
 
 ---
 
-[Unreleased]: https://github.com/iilmchat/catalog-desk/compare/v16.1.0...HEAD
+## [Unreleased]
+
+Пока нет изменений.
+
+[Unreleased]: https://github.com/iilmchat/catalog-desk/compare/v17.0.0...HEAD
+[17.0.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v17.0.0
 [V16.1.0]: https://github.com/iilmchat/catalog-desk/compare/v15.0...v16.1.0
 [V15.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v15.0
 [V14.0]: https://github.com/iilmchat/catalog-desk/releases/tag/v14.0
