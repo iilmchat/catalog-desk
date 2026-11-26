@@ -1,4 +1,4 @@
-# Чек-лист ручной приёмки Catalog Desk V15.1
+# Чек-лист ручной приёмки Catalog Desk V16.1.0
 
 Запуск: `start_ui_v14.bat`, браузер `http://127.0.0.1:8767`.
 Автотесты: `python -m unittest discover -p "test_*.py"`.
@@ -7,7 +7,7 @@
 
 ## 1. Smoke (обязательный перед коммитом)
 
-- [ ] `/api/health` → `ok=true`, `db=pyaterochka_catalog_v9.sqlite3`, `version=14.0`.
+- [ ] `/api/health` → `ok=true`, `db=pyaterochka_catalog_v9.sqlite3`, `version=16.1.0-dev`.
 - [ ] Бэкап `*.pre_v14_backup.sqlite3` создан при первом запуске.
 - [ ] «Обзор» показывает ненулевые счётчики товаров, цен, фото.
 - [ ] «Каталог»: поиск по названию и PLU, сортировка, пагинация.
