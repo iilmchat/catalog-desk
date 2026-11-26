@@ -38,3 +38,8 @@ jobs:
 
       - name: Run Pyaterochka taxonomy and parser regression tests
         run: node test_5ka_product_data_policy_v17.js
+
+      - name: Install DOM harness dependency
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Run browser-like DOM regression harness
+        run: npm run test:dom
