@@ -116,7 +116,7 @@ def calculate_completeness(product_class: str, values: dict, applicability: dict
     denominator = len(applicable_required)
     completed = [key for key in applicable_required if present.get(key, False)]
     fields = {}
-    for key in set(REQUIRED_BY_CLASS["food"] + REQUIRED_BY_CLASS["non_food"] + ("classification",)):
+    for key in FIELD_LABELS:
         if key in applicability:
             state = applicability[key]
         elif key in UNIVERSAL_REQUIRED or key == "classification":
