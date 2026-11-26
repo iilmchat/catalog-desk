@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Локальный интерфейс каталога Пятёрочки (V14.0, Python stdlib + чистый JS + контролируемый batch enrichment).
+"""Локальный интерфейс Catalog Desk V16.0 (Python stdlib + чистый JS + одиночное и пакетное обогащение).
 
 Запуск: python catalog_ui_server_v14.py
 Открывается только на 127.0.0.1, без внешних CDN и npm.
@@ -8,15 +8,18 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import mimetypes
 import os
 import re
+import secrets
 import subprocess
 import shutil
 import sys
 import threading
 import time
+import uuid
 import webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -51,6 +54,11 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 # Обратная совместимость V14: сеть по умолчанию. В V15 заменится на
 # список разрешённых SAP через catalog_config (CD-002).
 EXPECTED_SAP = get_store(DEFAULT_CHAIN)["default_sap"]
+
+# V16: one-time, short-lived requests for refreshing exactly one product.
+_DETAIL_REFRESH_LOCK = threading.Lock()
+_DETAIL_REFRESH_REQUESTS: dict[str, dict] = {}
+_DETAIL_REFRESH_TTL_SECONDS = 600
 
 
 def stores_data() -> list[dict]:
@@ -1363,6 +1371,228 @@ def product_gallery_urls(prod: dict) -> list[str]:
     return urls[:12]
 
 
+
+def create_detail_refresh_request(data: dict) -> dict:
+    """Create a short-lived one-time request bound to one exact product."""
+    chain = normalize_chain(data.get("chain"))
+    sap = str(data.get("sap_code") or data.get("sap") or "").strip()
+    plu = str(data.get("plu") or "").strip()
+    if not sap:
+        raise ValueError("Не указан SAP")
+    if not plu or not plu.isdigit():
+        raise ValueError("PLU должен содержать только цифры")
+    validate_store(chain, sap)
+    conn = connect_db()
+    try:
+        row = conn.execute(
+            "SELECT product_url FROM products WHERE chain=? AND sap_code=? AND plu=?",
+            (chain, sap, plu),
+        ).fetchone()
+        if not row:
+            raise ValueError("Товар с указанными сетью, SAP и PLU не найден")
+        product_url = str(row["product_url"] or "").strip()
+        if not product_url:
+            raise ValueError("У товара нет ссылки на карточку магазина")
+        validate_chain_url(chain, product_url)
+    finally:
+        conn.close()
+    token = secrets.token_urlsafe(32)
+    now = time.monotonic()
+    with _DETAIL_REFRESH_LOCK:
+        expired = [key for key, value in _DETAIL_REFRESH_REQUESTS.items()
+                   if value["expires_at"] <= now]
+        for key in expired:
+            _DETAIL_REFRESH_REQUESTS.pop(key, None)
+        if len(_DETAIL_REFRESH_REQUESTS) >= 500:
+            raise ValueError("Слишком много активных запросов обновления; повторите позже")
+        _DETAIL_REFRESH_REQUESTS[token] = {
+            "chain": chain, "sap_code": sap, "plu": plu,
+            "product_url": product_url, "expires_at": now + _DETAIL_REFRESH_TTL_SECONDS,
+            "recording": False,
+        }
+    return {
+        "token": token, "chain": chain, "sap_code": sap, "plu": plu,
+        "product_url": product_url, "expires_in": _DETAIL_REFRESH_TTL_SECONDS,
+    }
+
+
+def claim_detail_refresh(params: dict) -> dict:
+    """Read the product identity bound to a one-time refresh token."""
+    token = str((params.get("token") or [""])[0]).strip()
+    if not token:
+        raise ValueError("Не указан токен одиночного обновления")
+    with _DETAIL_REFRESH_LOCK:
+        request = _DETAIL_REFRESH_REQUESTS.get(token)
+        if not request or request["expires_at"] <= time.monotonic():
+            _DETAIL_REFRESH_REQUESTS.pop(token, None)
+            raise ValueError("Запрос обновления истёк или уже использован")
+        if request["recording"]:
+            raise ValueError("Этот запрос уже обрабатывается")
+        return {
+            "chain": request["chain"], "sap_code": request["sap_code"],
+            "plu": request["plu"], "product_url": request["product_url"],
+        }
+
+
+def import_single_detail_snapshot(payload: dict, expected: dict) -> dict:
+    """Import one validated snapshot without touching enrichment queue or batch state."""
+    if not isinstance(payload, dict) or payload.get("source") not in all_sources():
+        raise ValueError("Неверный формат подробной карточки")
+    chain = chain_from_payload(payload)
+    if chain != expected["chain"]:
+        raise ValueError(f"Ожидалась сеть {expected['chain']}, получена {chain}")
+    validate_chain_url(chain, payload.get("source_url"))
+    store = payload.get("store") if isinstance(payload.get("store"), dict) else {}
+    sap = str(store.get("sap_code") or payload.get("sap_code") or "").strip()
+    if sap != expected["sap_code"]:
+        raise ValueError("SAP карточки не совпадает с одноразовым запросом")
+    validate_store(chain, sap)
+    products = normalize_details_payload(payload)
+    if len(products) != 1:
+        raise ValueError("Одиночное обновление должно содержать ровно один товар")
+    prod = products[0]
+    plu = str(prod.get("plu") or "").strip()
+    if plu != expected["plu"] or not plu.isdigit():
+        raise ValueError("PLU карточки не совпадает с одноразовым запросом")
+    product_url = str(prod.get("product_url") or "").strip()
+    if not product_url:
+        raise ValueError("В карточке отсутствует product_url")
+    validate_chain_url(chain, product_url)
+
+    raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    digest = hashlib.sha256(raw).hexdigest()
+    captured = str(payload.get("captured_at") or now_iso())
+    imported = now_iso()
+    detail_dir = chain_path(chain, "details") / "_single_refresh"
+    detail_dir.mkdir(parents=True, exist_ok=True)
+    safe_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    file_name = f"single_refresh_{chain}_{sap}_{plu}_{safe_stamp}_{uuid.uuid4().hex[:8]}.json"
+    path = detail_dir / file_name
+    path.write_bytes(raw)
+
+    conn = connect_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        exists = conn.execute(
+            "SELECT 1 FROM products WHERE chain=? AND sap_code=? AND plu=?",
+            (chain, sap, plu),
+        ).fetchone()
+        if not exists:
+            raise ValueError("Товар больше не существует в каталоге")
+        if conn.execute(
+            "SELECT 1 FROM product_detail_imports WHERE source_hash=?", (digest,)
+        ).fetchone():
+            raise ValueError("Этот снимок уже импортирован")
+
+        nutrition = prod.get("nutrition") if isinstance(prod.get("nutrition"), dict) else {}
+        attrs = prod.get("attributes") if isinstance(prod.get("attributes"), dict) else {}
+        recovered_nutrition = parse_nutrition_from_details_text(
+            prod.get("details_text") or prod.get("raw_text") or ""
+        )
+        if len(recovered_nutrition) >= 2:
+            nutrition = {**nutrition, **recovered_nutrition}
+            attrs = dict(attrs)
+            for nutrient, value in recovered_nutrition.items():
+                attrs[nutrient] = f"{value}{' ккал' if nutrient == 'Ккал' else ' г'}"
+        text_for_repair = prod.get("details_text") or prod.get("raw_text") or ""
+        composition = prod.get("composition") or recover_composition_from_text(text_for_repair)
+        description = prod.get("description") or recover_description_from_text(text_for_repair)
+        detail_snapshot = {
+            "name": prod.get("name"), "product_url": product_url,
+            "image_url": prod.get("image_url"), "description": description,
+            "composition": composition, "nutrition": nutrition,
+            "attributes": attrs, "details_text": prod.get("details_text") or prod.get("raw_text"),
+        }
+        details_json = safe_json(detail_snapshot)
+        old = conn.execute(
+            "SELECT first_imported_at FROM product_details WHERE chain=? AND sap_code=? AND plu=?",
+            (chain, sap, plu),
+        ).fetchone()
+        first_imported = old[0] if old else imported
+        conn.execute("""
+            INSERT INTO product_detail_history(
+                chain,sap_code,plu,captured_at,imported_at,source_hash,file_name,details_json
+            ) VALUES(?,?,?,?,?,?,?,?)
+            ON CONFLICT(source_hash,chain,sap_code,plu) DO NOTHING
+        """, (chain,sap,plu,captured,imported,digest,file_name,details_json))
+        conn.execute("""
+            INSERT INTO product_details(
+                chain,sap_code,plu,product_name,product_url,image_url,description,composition,
+                nutrition_json,attributes_json,details_text,first_imported_at,last_imported_at,
+                last_captured_at,last_source_hash
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(chain,sap_code,plu) DO UPDATE SET
+                product_name=COALESCE(excluded.product_name,product_details.product_name),
+                product_url=COALESCE(excluded.product_url,product_details.product_url),
+                image_url=COALESCE(excluded.image_url,product_details.image_url),
+                description=COALESCE(excluded.description,product_details.description),
+                composition=COALESCE(excluded.composition,product_details.composition),
+                nutrition_json=CASE WHEN excluded.nutrition_json!='{}' THEN excluded.nutrition_json ELSE product_details.nutrition_json END,
+                attributes_json=CASE WHEN excluded.attributes_json!='{}' THEN excluded.attributes_json ELSE product_details.attributes_json END,
+                details_text=COALESCE(excluded.details_text,product_details.details_text),
+                last_imported_at=excluded.last_imported_at,
+                last_captured_at=excluded.last_captured_at,last_source_hash=excluded.last_source_hash
+        """, (chain,sap,plu,prod.get("name"),product_url,prod.get("image_url"),description,
+              composition,safe_json(nutrition),safe_json(attrs),
+              prod.get("details_text") or prod.get("raw_text"),
+              first_imported,imported,captured,digest))
+        for image_idx, image_url in enumerate(product_gallery_urls(prod)[:12]):
+            conn.execute("""
+                INSERT INTO product_images(
+                    chain,sap_code,plu,image_url,image_order,source,first_seen_at,last_seen_at
+                ) VALUES(?,?,?,?,?,?,?,?)
+                ON CONFLICT(chain,sap_code,plu,image_url) DO UPDATE SET
+                    image_order=MIN(product_images.image_order,excluded.image_order),
+                    last_seen_at=excluded.last_seen_at
+            """, (chain,sap,plu,image_url,image_idx,"details",captured,captured))
+        conn.execute("""
+            INSERT INTO product_detail_imports(source_hash,file_name,captured_at,imported_at,product_count)
+            VALUES(?,?,?,?,1)
+        """, (digest,file_name,captured,imported))
+        conn.commit()
+        return {
+            "accepted": True, "chain": chain, "sap_code": sap, "plu": plu,
+            "file_name": file_name, "captured_at": captured, "imported_at": imported,
+            "queue_changed": False,
+        }
+    except Exception:
+        conn.rollback()
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.close()
+
+
+def record_single_detail_refresh(data: dict) -> dict:
+    """Consume a token only after its exact one-product snapshot imports successfully."""
+    token = str(data.get("token") or "").strip()
+    if not token:
+        raise ValueError("Не указан токен одиночного обновления")
+    with _DETAIL_REFRESH_LOCK:
+        request = _DETAIL_REFRESH_REQUESTS.get(token)
+        if not request or request["expires_at"] <= time.monotonic():
+            _DETAIL_REFRESH_REQUESTS.pop(token, None)
+            raise ValueError("Запрос обновления истёк или уже использован")
+        if request["recording"]:
+            raise ValueError("Этот запрос уже обрабатывается")
+        request["recording"] = True
+        expected = dict(request)
+    try:
+        result = import_single_detail_snapshot(data.get("payload") or {}, expected)
+    except Exception:
+        with _DETAIL_REFRESH_LOCK:
+            current = _DETAIL_REFRESH_REQUESTS.get(token)
+            if current:
+                current["recording"] = False
+        raise
+    with _DETAIL_REFRESH_LOCK:
+        _DETAIL_REFRESH_REQUESTS.pop(token, None)
+    return result
+
+
 def import_pending_details() -> tuple[int, int, int, list[str]]:
     """Import manual product-page detail snapshots into SQLite, preserving every import."""
     import hashlib
@@ -1651,6 +1881,7 @@ def enrichment_queue(params: dict) -> dict:
             SELECT p.chain,p.sap_code,p.plu,p.name,p.categories,p.product_url,p.current_price,p.image_url,p.image_file,
                    p.first_seen_at,p.last_seen_at,
                    d.composition,d.description,d.nutrition_json,d.attributes_json,d.details_text,
+                   CASE WHEN d.plu IS NOT NULL THEN 1 ELSE 0 END AS has_details_record,
                    COALESCE(t.status,'pending') AS task_status,t.created_at AS task_created_at,
                    t.last_action_at,t.opened_at,t.exported_at,t.processed_at,t.skipped_at,t.note
             FROM products p
@@ -1701,7 +1932,7 @@ def enrichment_queue(params: dict) -> dict:
         for item in all_items:
             for cat in item["category_list"]:
                 category_totals.setdefault(cat, set()).add(item["plu"])
-                if item["task_status"] == "processed":
+                if item["has_details_record"]:
                     category_done.setdefault(cat, set()).add(item["plu"])
         category_progress = []
         for cat in category_set:
@@ -2336,7 +2567,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(photo_path)
             if path == "/files/excel": return self._file(BASE_DIR / "pyaterochka_catalog_v9.xlsx", attachment=True)
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
-            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "15.1-dev", "chains": list(STORES)})
+            if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "16.0-dev", "chains": list(STORES)})
             if path == "/api/stores": return self._json(200, stores_data())
             if path == "/api/compare": return self._json(200, compare_data(params))
             if path == "/api/search": return self._json(200, search_products(params))
@@ -2369,6 +2600,7 @@ class Handler(BaseHTTPRequestHandler):
                 overview_params = dict(params)
                 overview_params.update({"status": ["all"], "completeness": ["all"], "limit": ["10"], "offset": ["0"]})
                 return self._json(200, enrichment_queue(overview_params))
+            if path == "/api/details/refresh/claim": return self._json(200, claim_detail_refresh(params))
             if path == "/api/batch/status": return self._json(200, batch_status(request_chain(params)))
             if path == "/api/job":
                 with _JOB_LOCK: return self._json(200, dict(_JOB))
@@ -2420,6 +2652,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, set_favorite(data))
             if parsed.path == "/api/enrichment/task":
                 return self._json(200, update_enrichment_task(data))
+            if parsed.path == "/api/details/refresh/request":
+                return self._json(200, create_detail_refresh_request(data))
+            if parsed.path == "/api/details/refresh/record":
+                return self._json(200, record_single_detail_refresh(data))
             if parsed.path == "/api/batch/start":
                 return self._json(200, batch_start(data))
             if parsed.path == "/api/batch/pause":
