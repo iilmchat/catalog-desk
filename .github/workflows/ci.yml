@@ -35,3 +35,6 @@ jobs:
           node --check pr_batch_enrichment_v16.user.js
       - name: Run Perekrestok DOM parser regression tests
         run: node test_perekrestok_dom_parser_v16.js
+
+      - name: Run Pyaterochka taxonomy and parser regression tests
+        run: node test_5ka_product_data_policy_v17.js
