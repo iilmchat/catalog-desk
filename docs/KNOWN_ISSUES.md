@@ -36,8 +36,8 @@
 ### CD-024 — Неполное извлечение деталей карточки Перекрёстка
 **Статус:** Partially mitigated / source limitation confirmed. Реальная DOM-фикстура PLU 4406119 / SAP XSEO подтверждает product root, цену, изображения, БЖУ и характеристики; в ней отсутствуют состав и отдельное фактическое описание. Фикстура PLU 4414429 подтверждает non-food материалы «Полиэтилен, джут.», но не содержит описания. Userscript ограничивает извлечение узлом `[data-qa="product-screen"]` и исключает соседние рекомендации. Для закрытия нужны дополнительные captured pages, где описание и состав действительно присутствуют или свёрнуты, с проверкой раскрытого/нераскрытого состояния.
 
-### CD-025 — Нет полноценной browser-like DOM regression userscript
-**Статус:** Partially implemented. Для обеих сетей добавлены сокращённые captured HTML fixtures; Python-тесты проверяют реальные селекторы/структуру и значения, Node.js tests проверяют экспортированные helper-функции, всё запускается в CI. Чего пока нет: browser-like DOM runtime, который загружает HTML как DOM-дерево, запускает parser helpers на настоящих элементах и проверяет итоговый payload без сети/локального API. Это следующий критерий закрытия issue.
+### CD-025 — DOM regression userscript и сборка payload
+**Статус:** In progress in PR #9. Для обеих сетей есть captured HTML fixtures; Python-тесты проверяют структуру, Node.js tests — helper-функции. PR #9 добавляет LinkeDOM DOM runtime, который загружает HTML как DOM-дерево, запускает реальные userscript helpers и проверяет итоговый payload без сети/локального API; семь сценариев harness проходят CI. LinkeDOM не является полноценным браузерным движком: геометрия и `innerText` имитируются тестовыми shim-функциями. После merge CD-025 можно закрыть для DOM/payload regression; отдельный live-browser smoke test решать независимо.
 
 ## Продуктовые задачи следующего этапа
 
