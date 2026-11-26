@@ -49,7 +49,7 @@ assert.equal(attrs['Страна производства'], 'Россия');
 assert.equal(attrs['Белки'], '1.2 г');
 assert.equal(parser.extractComposition(scoped.productText), null);
 assert.equal(
-  parser.extractComposition('Состав\\nДревесина, джут.\\nВес\\n0.37 кг\\nБренд\\nМаркет'),
+  parser.extractComposition('Состав\nДревесина, джут.\nВес\n0.37 кг\nБренд\nМаркет'),
   'Древесина, джут.'
 );
 assert.equal(parser.extractDescription(productRoot, title.innerText), null);
