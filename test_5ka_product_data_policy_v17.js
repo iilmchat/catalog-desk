@@ -47,7 +47,7 @@ const realProductText = [
   'в чистых, хорошо вентилируемых помещениях, без постороннего запаха, резких колебаний температуры воздуха при относительной влажности воздуха не более 80%',
   'Бренд',
   'Dr. Bakers'
-].join('\\n');
+].join('\n');
 const productTitle = { innerText: 'Агар Dr. Bakers пищевой 7г' };
 const productRoot = {
   innerText: realProductText,
