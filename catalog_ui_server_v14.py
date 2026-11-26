@@ -1392,6 +1392,7 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
         "materials_text": materials, "unclassified_composition_text": unclassified,
         "composition_kind": destination,
         "extraction_status": {
+            "classification": "captured" if classification != "unknown" else "not_found",
             "name": "captured" if prod.get("name") else "not_found",
             "price": "captured" if prod.get("current_price") is not None else "not_found",
             "image": "captured" if prod.get("image_url") else "not_found",
