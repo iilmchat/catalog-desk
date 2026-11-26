@@ -153,7 +153,7 @@
   function parseNutrition(productText) {
     const start = productText.search(/Пищевая\s+ценность/i);
     let block = start >= 0 ? productText.slice(start, start + 420) : productText.slice(0, 600);
-    const compositionAt = block.search(/\bСостав\b/i);
+    const compositionAt = block.search(/Состав(?=\s|[:：-]|$)/i);
     if (compositionAt > 0) block = block.slice(0, compositionAt);
     const denominator = block.match(/(?:на\s*)?100\s*(?:г|мл)\b/i);
     if (denominator && denominator.index !== undefined) block = block.slice(denominator.index + denominator[0].length);
@@ -164,7 +164,7 @@
       ['Углеводы', /углеводы/i],
       ['Ккал', /(?:ккал|калорийность|энергетическая\s+ценность)/i]
     ];
-    const firstLabel = /(?:белки|жиры|углеводы|ккал)\b/i.exec(block);
+    const firstLabel = /(?:белки|жиры|углеводы|ккал)(?=\s|[:：-]|$)/i.exec(block);
     const firstValue = /[0-9]+(?:[.,][0-9]+)?/.exec(block);
     const valueFirst = !!(firstLabel && firstValue && firstValue.index < firstLabel.index);
     for (const [key, label] of specs) {
