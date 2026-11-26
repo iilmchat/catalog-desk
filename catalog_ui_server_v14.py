@@ -41,6 +41,10 @@ from catalog_config import (
     validate_chain_url,
 )
 from catalog_migrations import backup_before_v15, migrate_v9_to_v10
+from product_data_policy_v17 import (
+    PRODUCT_CLASSES, applicability_for, calculate_completeness,
+    classify_product, composition_destination,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "ui_v14"
@@ -593,7 +597,7 @@ def has_complete_nutrition(value) -> bool:
 
 
 def quality_fields(row: dict) -> dict:
-    """Индикатор полноты карточки: 8 полей + источник + противоречия."""
+    """Category-aware completeness; N/A fields are excluded, unknown class is never 100%."""
     text = str(row.get("details_text") or "")
     attrs = row.get("attributes", row.get("attributes_json"))
     if isinstance(attrs, str):
@@ -609,18 +613,29 @@ def quality_fields(row: dict) -> dict:
         except Exception:
             nutrition = {}
     nutrition = nutrition if isinstance(nutrition, dict) else {}
+    meta = attrs.get("_catalog_meta") if isinstance(attrs.get("_catalog_meta"), dict) else {}
+    classification = meta.get("product_class")
+    if classification not in PRODUCT_CLASSES:
+        classification = classify_product(categories=row.get("categories") or row.get("category") or "")["product_class"]
+    applicability = meta.get("field_applicability")
+    if not isinstance(applicability, dict):
+        applicability = applicability_for(classification)
     composition = row.get("composition") or recover_composition_from_text(text)
+    materials = meta.get("materials_text")
     description = row.get("description") or recover_description_from_text(text)
-    fields = {
-        "название": bool(row.get("name") or row.get("product_name")),
-        "цена": row.get("current_price") is not None,
-        "фото": bool(row.get("image_url")),
-        "состав": bool(composition),
-        "БЖУ": has_complete_nutrition(nutrition),
-        "вес": bool(attrs.get("Вес") or attrs.get("Масса нетто") or attrs.get("Объем") or attrs.get("Объём")),
-        "срок хранения": bool(attrs.get("Срок хранения") or attrs.get("Срок годности")),
-        "бренд": bool(attrs.get("Бренд")),
-    }
+    weight = attrs.get("Вес") or attrs.get("Масса нетто") or attrs.get("Объем") or attrs.get("Объём")
+    shelf_life = attrs.get("Срок хранения") or attrs.get("Срок годности")
+    policy = calculate_completeness(classification, {
+        "name": row.get("name") or row.get("product_name"),
+        "price": row.get("current_price"),
+        "image": row.get("image_url"),
+        "ingredients": composition,
+        "nutrition": nutrition if has_complete_nutrition(nutrition) else None,
+        "materials": materials,
+        "weight": weight,
+        "shelf_life": shelf_life,
+        "brand": attrs.get("Бренд"),
+    }, applicability)
     sources = {}
     if not row.get("composition") and composition:
         sources["состав"] = "анализ текста карточки"
@@ -628,14 +643,18 @@ def quality_fields(row: dict) -> dict:
         sources["описание"] = "анализ текста карточки"
     if not row.get("nutrition_json") and nutrition:
         sources["БЖУ"] = "анализ текста карточки"
+    legacy_fields = {key: value["status"] == "captured" for key, value in policy["fields"].items()}
     return {
-        "percent": round(sum(fields.values()) / len(fields) * 100),
-        "fields": fields,
+        "percent": policy["percent"], "completed": policy["completed"],
+        "required": policy["required"], "product_class": classification,
+        "classification_review_required": policy["classification_review_required"],
+        "fields": legacy_fields, "field_status": policy["fields"],
         "sources": sources,
         "contradictions": weight_contradictions(
             str(row.get("name") or row.get("product_name") or ""), attrs
         ),
-        "disclaimer": "Анализ текста состава, не лабораторная проверка продукта.",
+        "disclaimer": "Полнота учитывает только обязательные применимые поля; N/A исключается из знаменателя.",
+        "policy_version": policy["policy_version"],
     }
 
 
@@ -1322,6 +1341,43 @@ def persist_page_metadata() -> None:
         conn.close()
 
 
+def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details_text: str) -> tuple[str | None, str | None, dict, dict]:
+    """Normalize generic retailer composition into ingredients or materials and retain provenance."""
+    attrs = dict(attrs or {})
+    supplied_meta = prod.get("catalog_metadata") if isinstance(prod.get("catalog_metadata"), dict) else {}
+    classification = prod.get("product_class") or supplied_meta.get("product_class")
+    taxonomy = prod.get("category_path") or prod.get("categories") or supplied_meta.get("category_path") or ""
+    inferred = classify_product(categories=taxonomy)
+    if classification not in PRODUCT_CLASSES:
+        classification = inferred["product_class"]
+    basis = supplied_meta.get("classification_basis") or prod.get("classification_basis") or inferred["classification_basis"]
+    confidence = supplied_meta.get("classification_confidence", prod.get("classification_confidence", inferred["classification_confidence"]))
+    applicability = prod.get("field_applicability") or supplied_meta.get("field_applicability")
+    if not isinstance(applicability, dict):
+        applicability = applicability_for(classification)
+    source_composition = prod.get("composition") or recover_composition_from_text(details_text)
+    destination = composition_destination(classification, prod.get("composition_source_label") or "Состав")
+    ingredients = prod.get("ingredients") or (source_composition if destination == "ingredients" else None)
+    materials = prod.get("materials") or supplied_meta.get("materials_text") or (source_composition if destination == "materials" else None)
+    unclassified = source_composition if destination == "unclassified" else None
+    meta = {
+        "schema_version": 1, "policy_version": "1",
+        "product_class": classification, "classification_basis": basis,
+        "classification_confidence": confidence, "category_path": taxonomy,
+        "field_applicability": applicability,
+        "materials_text": materials, "unclassified_composition_text": unclassified,
+        "composition_kind": destination,
+        "extraction_status": {
+            "ingredients": "captured" if ingredients else ("not_applicable" if applicability.get("ingredients") == "not_applicable" else "not_found"),
+            "materials": "captured" if materials else ("not_applicable" if applicability.get("materials") == "not_applicable" else "not_found"),
+            "nutrition": "captured" if has_complete_nutrition(nutrition) else ("not_applicable" if applicability.get("nutrition") == "not_applicable" else "not_found"),
+        },
+        "provenance": {"source_url": prod.get("product_url"), "captured_at": prod.get("captured_at") or None},
+    }
+    attrs["_catalog_meta"] = meta
+    return ingredients, materials, attrs, meta
+
+
 def normalize_details_payload(payload: dict) -> list[dict]:
     products = payload.get("products")
     if isinstance(products, list):
@@ -1785,22 +1841,15 @@ def set_favorite(data: dict) -> dict:
 
 
 def _detail_coverage(row: dict) -> tuple[int, list[str]]:
-    """Simple, transparent 5-block coverage score for manually exported product details."""
-    filled: list[str] = []
-    if str(row.get("composition") or "").strip(): filled.append("Состав")
-    if str(row.get("description") or "").strip(): filled.append("Описание")
-    try:
-        n = json.loads(row.get("nutrition_json") or "{}")
-    except Exception:
-        n = {}
-    if has_complete_nutrition(n): filled.append("Пищевая ценность")
-    try:
-        a = json.loads(row.get("attributes_json") or "{}")
-    except Exception:
-        a = {}
-    if isinstance(a, dict) and any(v not in (None, "", {}) for v in a.values()): filled.append("Характеристики")
-    if str(row.get("details_text") or "").strip(): filled.append("Текст карточки")
-    return round(len(filled) / 5 * 100), filled
+    """Queue coverage mirrors category-aware applicable-field completeness."""
+    quality = quality_fields(row)
+    fields = quality.get("field_status") or {}
+    filled = [item.get("label", key) for key, item in fields.items()
+              if item.get("status") == "captured"]
+    # Queue UI currently displays 20-point buckets; keep the bucket contract while
+    # the product card exposes the exact percentage and numerator/denominator.
+    score = int(round(float(quality.get("percent", 0)) / 20) * 20)
+    return max(0, min(100, score)), filled
 
 
 def enrichment_status(params: dict | None = None) -> dict:
