@@ -363,7 +363,7 @@
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-      clean, parseNutrition, extractComposition,
+      clean, productRootAndText, parseNutrition, extractComposition, extractAttributes,
       classifyProductFromTaxonomy, applicabilityForProductClass
     };
     return;
