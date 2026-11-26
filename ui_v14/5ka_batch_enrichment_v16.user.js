@@ -169,8 +169,8 @@
     const valueFirst = !!(firstLabel && firstValue && firstValue.index < firstLabel.index);
     for (const [key, label] of specs) {
       const labelText = label.source;
-      const before = new RegExp(`([0-9]+(?:[.,][0-9]+)?)\\s*(?:г|g)?\\s*${labelText}\\b`, 'i');
-      const after = new RegExp(`${labelText}\\s*[:：-]?\\s*([0-9]+(?:[.,][0-9]+)?)`, 'i');
+      const before = new RegExp('([0-9]+(?:[.,][0-9]+)?)\\s*(?:г|g)?\\s*' + labelText + '(?=\\s|[:：-]|$)', 'i');
+      const after = new RegExp(labelText + '(?=\\s|[:：-]|$)\\s*[:：-]?\\s*([0-9]+(?:[.,][0-9]+)?)', 'i');
       const match = valueFirst ? (block.match(before) || block.match(after)) : (block.match(after) || block.match(before));
       if (match) result[key] = match[1].replace(',', '.');
     }
