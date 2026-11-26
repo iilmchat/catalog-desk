@@ -197,7 +197,7 @@ class MultiStoreBatchTests(unittest.TestCase):
                 nutrition_json,attributes_json,details_text,first_imported_at,last_imported_at,last_captured_at)
             VALUES('perekrestok','XSEO','100001','Перекрёсток','Сыры, пальмовое масло, сахар, арахис',
                 '{"Белки":"20","Жиры":"3","Углеводы":"5","Ккал":"250"}',
-                '{"Бренд":"Hochland","Вес":"0.15 кг","Срок хранения":"180 дн."}',
+                '{"Бренд":"Hochland","Вес":"0.15 кг","Срок хранения":"180 дн.","_catalog_meta":{"product_class":"food","field_applicability":{"nutrition":"applicable","ingredients":"applicable","materials":"not_applicable","shelf_life":"applicable","weight":"applicable","brand":"applicable"}}}',
                 'Состав Сыры, пальмовое масло, сахар, арахис',
                 '2026-11-24','2026-11-24','2026-11-24')
         """)
