@@ -20,7 +20,7 @@ assert.deepEqual(nutrition, {
 
 assert.equal(
   parser.extractComposition('Состав\nПолиэтилен, джут.\nВес\n0.37 кг\nБренд\nМаркет'),
-  'Полиэтилен, джут'
+  'Полиэтилен, джут.'
 );
 
 console.log('Pyaterochka V17 taxonomy and DOM parser tests passed.');
