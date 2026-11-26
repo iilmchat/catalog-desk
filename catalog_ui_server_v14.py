@@ -1400,7 +1400,7 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
             "materials": "captured" if materials else ("not_applicable" if applicability.get("materials") == "not_applicable" else "not_found"),
             "nutrition": "captured" if has_complete_nutrition(nutrition) else ("not_applicable" if applicability.get("nutrition") == "not_applicable" else "not_found"),
             "weight": "captured" if any(attrs.get(k) for k in ("Вес", "Масса нетто", "Объем", "Объём")) else "not_found",
-            "shelf_life": "captured" if attrs.get("Срок хранения") or attrs.get("Срок годности") else ("not_applicable" if applicability.get("shelf_life") == "not_applicable" else "not_found"),
+            "shelf_life": "not_applicable" if applicability.get("shelf_life") == "not_applicable" else ("captured" if attrs.get("Срок хранения") or attrs.get("Срок годности") else "not_found"),
             "brand": "captured" if attrs.get("Бренд") else "not_found",
             "description": "captured" if prod.get("description") else "not_found",
         },
