@@ -188,6 +188,11 @@
     return result;
   }
 
+  function extractDescription(productText) {
+    const match = String(productText).match(/(?:^|\n)\s*Описание\s*\n([\s\S]{3,1600}?)(?=\n\s*Показать\s*полностью(?:\s*\n|$))/i);
+    return match ? clean(match[1]) : null;
+  }
+
   function extractComposition(productText) {
     const match = productText.match(/Состав\s*([\s\S]{3,900}?)(?=\n\s*(?:Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)(?=\s|[:：-]|$)|$)/i);
     return match ? clean(match[1]) : null;
@@ -248,7 +253,7 @@
         image_gallery: gallery,
         composition,
         materials,
-        description: null,
+        description: extractDescription(productText),
         nutrition,
         attributes,
         category_path: categoryPath,
@@ -363,7 +368,7 @@
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-      clean, productRootAndText, parseNutrition, extractComposition, extractAttributes,
+      clean, productRootAndText, parseNutrition, extractDescription, extractComposition, extractAttributes,
       classifyProductFromTaxonomy, applicabilityForProductClass
     };
     return;
