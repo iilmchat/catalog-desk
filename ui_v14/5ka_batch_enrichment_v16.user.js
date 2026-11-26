@@ -110,6 +110,17 @@
   }
 
   function productRootAndText() {
+    // Current 5ka product pages expose a semantic product-screen boundary.
+    // Keep recommendations and other page chrome outside the captured payload.
+    const productRoot = document.querySelector('[data-qa="product-screen"]');
+    if (productRoot) {
+      const title = productRoot.querySelector('[data-qa="product-card-title"]') ||
+        productRoot.querySelector('h1');
+      const productText = String(productRoot.innerText || productRoot.textContent || '');
+      return { main: productRoot, title, fullText: productText, productText };
+    }
+
+    // Compatibility fallback for older layouts.
     const main = document.querySelector('main,[role="main"]') || document.body;
     const title = main.querySelector('h1') || document.querySelector('h1');
     const fullText = String(main.innerText || main.textContent || '');
