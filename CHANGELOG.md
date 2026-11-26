@@ -7,7 +7,7 @@
 ## [Unreleased]
 
 ### Added
-- Browser-like DOM regression harness на captured HTML fixtures обеих сетей: проверка userscript payload, изоляции product-screen, секций description/composition, скрытых блоков и исключения рекомендаций/отзывов. Harness запускается в CI.
+- DOM-backed regression harness на LinkeDOM и captured HTML fixtures обеих сетей: проверка userscript payload, изоляции product-screen, секций description/composition, скрытых блоков и исключения рекомендаций/отзывов. Harness запускается в CI; layout и `innerText` моделируются shim-функциями, это не полноценный браузерный движок.
 
 ### Fixed
 - Извлечение описания Пятёрочки останавливается на следующей секции карточки, а не только на кнопке «Показать полностью»; состав извлекается только из самостоятельной подписи секции.
