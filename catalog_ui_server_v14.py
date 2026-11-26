@@ -632,8 +632,9 @@ def quality_fields(row: dict) -> dict:
     applicability = meta.get("field_applicability")
     if not isinstance(applicability, dict):
         applicability = applicability_for(classification)
-    composition = row.get("composition") or recover_composition_from_text(text)
-    materials = meta.get("materials_text")
+    raw_composition = row.get("composition") or recover_composition_from_text(text)
+    composition = raw_composition if is_food_classification(classification) else None
+    materials = meta.get("materials_text") if classification == "non_food" else None
     description = row.get("description") or recover_description_from_text(text)
     weight = attrs.get("Вес") or attrs.get("Масса нетто") or attrs.get("Объем") or attrs.get("Объём")
     shelf_life = attrs.get("Срок хранения") or attrs.get("Срок годности")
@@ -1380,9 +1381,9 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
         applicability = applicability_for(classification)
     source_composition = prod.get("composition") or recover_composition_from_text(details_text)
     destination = composition_destination(classification, prod.get("composition_source_label") or "Состав")
-    ingredients = prod.get("ingredients") or (source_composition if destination == "ingredients" else None)
-    materials = prod.get("materials") or supplied_meta.get("materials_text") or (source_composition if destination == "materials" else None)
-    unclassified = source_composition if destination == "unclassified" else None
+    ingredients = (prod.get("ingredients") or source_composition) if classification in {"food", "pet_food"} else None
+    materials = (prod.get("materials") or supplied_meta.get("materials_text") or source_composition) if classification == "non_food" else None
+    unclassified = source_composition if classification == "unknown" else None
     meta = {
         "schema_version": 1, "policy_version": "1",
         "product_class": classification, "classification_basis": basis,
