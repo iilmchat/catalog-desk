@@ -1586,7 +1586,9 @@ def import_single_detail_snapshot(payload: dict, expected: dict) -> dict:
                 product_url=COALESCE(excluded.product_url,product_details.product_url),
                 image_url=COALESCE(excluded.image_url,product_details.image_url),
                 description=COALESCE(excluded.description,product_details.description),
-                composition=COALESCE(excluded.composition,product_details.composition),
+                composition=CASE
+                    WHEN instr(excluded.attributes_json, '"_catalog_meta"')>0 THEN excluded.composition
+                    ELSE COALESCE(excluded.composition,product_details.composition) END,
                 nutrition_json=CASE WHEN excluded.nutrition_json!='{}' THEN excluded.nutrition_json ELSE product_details.nutrition_json END,
                 attributes_json=CASE WHEN excluded.attributes_json!='{}' THEN excluded.attributes_json ELSE product_details.attributes_json END,
                 details_text=COALESCE(excluded.details_text,product_details.details_text),
@@ -1730,7 +1732,9 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                             product_url=COALESCE(excluded.product_url,product_details.product_url),
                             image_url=COALESCE(excluded.image_url,product_details.image_url),
                             description=COALESCE(excluded.description,product_details.description),
-                            composition=COALESCE(excluded.composition,product_details.composition),
+                            composition=CASE
+                    WHEN instr(excluded.attributes_json, '"_catalog_meta"')>0 THEN excluded.composition
+                    ELSE COALESCE(excluded.composition,product_details.composition) END,
                             nutrition_json=CASE WHEN excluded.nutrition_json!='{}' THEN excluded.nutrition_json ELSE product_details.nutrition_json END,
                             attributes_json=CASE WHEN excluded.attributes_json!='{}' THEN excluded.attributes_json ELSE product_details.attributes_json END,
                             details_text=COALESCE(excluded.details_text,product_details.details_text),
