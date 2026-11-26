@@ -152,8 +152,22 @@
   }
 
   function extractComposition(productText) {
-    const match = productText.match(/Состав\s*([\s\S]{3,900}?)(?=Показать\s*полностью|Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса|$)/i);
+    const match = productText.match(/(?:^|\\n)\\s*Состав\\s*[:：]?\\s*([\\s\\S]{3,900}?)(?=\\n\\s*(?:Показать\\s*полностью|Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)\\b|$)/i);
     return match ? clean(match[1]) : null;
+  }
+
+  function extractDescription(productText) {
+    const lines = String(productText || '').split(/\\r?\\n/).map(clean).filter(Boolean);
+    const start = lines.findIndex(line => /^(?:Описание(?: товара)?|Описание товара[:：])$/i.test(line));
+    if (start < 0) return null;
+    const parts = [];
+    for (const line of lines.slice(start + 1)) {
+      if (/^(?:Состав|Пищевая ценность|Характеристики|Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Показать полностью)$/i.test(line)) break;
+      parts.push(line);
+      if (parts.join(' ').length >= 1200) break;
+    }
+    const value = clean(parts.join(' '));
+    return value.length >= 3 ? value.slice(0, 1200) : null;
   }
 
   function extractAttributes(productText, nutrition) {
@@ -185,6 +199,7 @@
     const gallery = extractGallery(main, name);
     const nutrition = parseNutrition(productText);
     const composition = extractComposition(productText);
+    const description = extractDescription(productText);
     const attributes = extractAttributes(productText, nutrition);
     const imageUrl = gallery[0]?.url || null;
     return {
@@ -204,7 +219,7 @@
         image_alt: gallery[0]?.alt || name,
         image_gallery: gallery,
         composition,
-        description: null,
+        description,
         nutrition,
         attributes,
         details_text: clean(productText)
