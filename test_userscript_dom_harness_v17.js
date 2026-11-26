@@ -104,7 +104,9 @@ test('Pyaterochka real DOM builds a scoped payload with clean description and co
   assert.equal(payload.product.plu, '4275044');
   assert.equal(payload.product.description,
     'Агар Dr. Bakers Professional обладает оптимальной прочностью геля* и не требует длительного кипячения для его образования. Идеально подходит для приготовления мармелада, суфле, зефира и других изделий.');
-  assert.equal(payload.product.composition,
+  assert.equal(payload.product.product_class, 'unknown');
+  assert.equal(payload.product.composition, null);
+  assert.equal(payload.product.catalog_metadata.unclassified_composition_text,
     'агар (загуститель, агент желирующий). Может содержать следы молока, глютена, горчицы, сои, яиц, кунжута и орехов');
   assert.deepEqual({ ...payload.product.nutrition }, {
     Белки: '0.4', Жиры: '0.0', Углеводы: '0.0', Ккал: '174.0'
