@@ -7,7 +7,7 @@
 
 ## 1. Версионирование
 
-- Формат `V<major>.<minor>`; major — смена модели данных или появление сети,
+- Формат `V<major>.<minor>.<patch>`; major — смена модели данных или появление сети,
   minor — обратно совместимые функции.
 - Единственный источник версии — `VERSION.txt` и `CHANGELOG.md`; сервер отдаёт
   ту же строку в `/api/health`.
@@ -19,7 +19,7 @@
 2. [ ] `python -m unittest discover -p "test_*.py"` — зелёный.
 3. [ ] Smoke по [MANUAL_TESTING_GUIDE.md](../qa/MANUAL_TESTING_GUIDE.md) — пройден.
 4. [ ] Миграция применена к копии боевой базы; оригинал не изменён до проверки.
-5. [ ] Отчёт по шагу добавлен в `reports/v15/`.
+5. [ ] Отчёт по шагу добавлен в соответствующую папку `reports/`, если для релиза он предусмотрен.
 6. [ ] `README.md`, `GET_STARTED.md`, `ARCHITECTURE.md`, `KNOWN_ISSUES.md` актуальны.
 7. [ ] `CHANGELOG.md`: `[Unreleased]` → `[Vxx.y.z] — YYYY-MM-DD`, новая пустая секция.
 8. [ ] `VERSION.txt`, `/api/health` и видимые подписи UI согласованы; технические имена `start_ui_v14.bat` и `ui_v14/` сохраняются ради обратной совместимости.
@@ -28,7 +28,7 @@
 
 ## 3. Миграции базы
 
-- adдитивные (`ALTER TABLE ... ADD COLUMN`, `CREATE TABLE IF NOT EXISTS`);
+- аддитивные (`ALTER TABLE ... ADD COLUMN`, `CREATE TABLE IF NOT EXISTS`);
 - версия схемы хранится в `schema_meta`, одноразовые флаги — в `catalog_ui_meta`;
 - перед первой миграцией V14 создавался `*.pre_v14_backup.sqlite3`;
 - перед V15 (v9 → v10) обязательна ручная копия базы и проверка counts:
@@ -38,7 +38,7 @@
 
 1. Остановить сервер.
 2. Вернуть файл базы из бэкапа (и `*.sqlite3-wal`/`*.shm`, если они есть).
-3. Verнуть предыдущие `catalog_ui_server_vX.py`, `ui_vX/`, `import_5ka_catalog_vX.py`.
+3. Вернуть предыдущие `catalog_ui_server_vX.py`, `ui_vX/`, `import_5ka_catalog_vX.py`.
 4. Поднять сервер на прежнем порту и проверить `/api/health`.
 
 ## 5. История релизов
