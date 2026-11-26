@@ -150,11 +150,11 @@
   }
 
   function extractDescription(root, productName) {
-    // Ignore schema.org meta descriptions: on product pages they often repeat
-    // the title and are hidden SEO copy, not a customer-facing description.
+    // Ignore schema.org meta descriptions and hidden/collapsed nodes: neither
+    // is evidence that a customer-visible product description was captured.
     const node = root.querySelector('[data-qa="product-description"]');
-    if (!node) return null;
-    const value = clean(node.innerText || node.textContent || '');
+    if (!node || !visible(node)) return null;
+    const value = clean(node.innerText || '');
     return value && value !== clean(productName) ? value : null;
   }
 
@@ -219,8 +219,23 @@
   }
 
   function extractComposition(productText) {
-    const match = productText.match(/Состав\s*([\s\S]{3,900}?)(?=Показать\s*полностью|(?:Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)(?=\s|[:：-]|$)|$)/i);
-    return match ? clean(match[1]) : null;
+    const lines = String(productText || '').split(/\r?\n/).map(clean).filter(Boolean);
+    let start = -1;
+    let inlineValue = '';
+    for (let i = 0; i < lines.length; i++) {
+      if (/^Состав$/i.test(lines[i])) { start = i; break; }
+      const inline = lines[i].match(/^Состав\s*[:：]\s*(.+)$/i);
+      if (inline) { start = i; inlineValue = inline[1]; break; }
+    }
+    if (start < 0) return null;
+    const parts = inlineValue ? [inlineValue] : [];
+    for (const line of lines.slice(start + 1)) {
+      if (/^(?:Показать полностью|Пищевая ценность|Характеристики|Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)(?:\s*[:：].*)?$/i.test(line)) break;
+      parts.push(line);
+      if (parts.join(' ').length >= 900) break;
+    }
+    const value = clean(parts.join(' '));
+    return value.length >= 3 ? value.slice(0, 900) : null;
   }
 
   function extractAttributes(productText, nutrition) {
@@ -403,7 +418,7 @@
     module.exports = {
       clean, parseNutrition, extractComposition, extractAttributesFromDom,
       extractDescription, productRootAndText, classifyProductFromTaxonomy,
-      applicabilityForProductClass
+      applicabilityForProductClass, buildPayload
     };
     return;
   }
