@@ -57,6 +57,7 @@ assert.equal(parser.extractDescription(productRoot, title.innerText), null);
 
 assert.equal(parser.classifyProductFromTaxonomy('Каталог / Фрукты и овощные нарезки').product_class, 'food');
 assert.equal(parser.classifyProductFromTaxonomy('Каталог / Новогодние товары').product_class, 'non_food');
+assert.equal(parser.classifyProductFromTaxonomy('Главная / Каталог / Маркет / Для Нового года').product_class, 'non_food');
 assert.equal(parser.classifyProductFromTaxonomy('').product_class, 'unknown');
 assert.equal(parser.applicabilityForProductClass('non_food').nutrition, 'not_applicable');
 assert.equal(parser.applicabilityForProductClass('non_food').materials, 'applicable');
