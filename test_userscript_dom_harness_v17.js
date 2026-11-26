@@ -32,7 +32,7 @@ function hiddenByStyle(element) {
 }
 
 function renderInnerText(node) {
-  if (node.nodeType === 3) return node.textContent || '';
+  if (node.nodeType === 3) return hiddenByStyle(node.parentElement) ? '' : (node.textContent || '');
   if (node.nodeType !== 1 || hiddenByStyle(node)) return '';
   const block = /^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|BR|DIV|DL|DT|DD|FIELDSET|FIGCAPTION|FIGURE|FOOTER|FORM|H1|H2|H3|H4|HEADER|LI|MAIN|NAV|OL|P|SECTION|TABLE|TR|UL)$/.test(node.tagName);
   const children = [...node.childNodes].map(renderInnerText).join('');
