@@ -152,12 +152,12 @@
   }
 
   function extractComposition(productText) {
-    const match = productText.match(/(?:^|\\n)\\s*Состав\\s*[:：]?\\s*([\\s\\S]{3,900}?)(?=\\n\\s*(?:Показать\\s*полностью|Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)\\b|$)/i);
+    const match = productText.match(/(?:^|\n)\\s*Состав\\s*[:：]?\\s*([\\s\\S]{3,900}?)(?=\n\\s*(?:Показать\\s*полностью|Вес|Масса нетто|Объ[её]м|Срок хранения|Срок годности|Условия хранения|Бренд|Страна производства|Производитель|Тип продукта|Добавки|Острый|Вид упаковки|Назначение соуса)\\b|$)/i);
     return match ? clean(match[1]) : null;
   }
 
   function extractDescription(productText) {
-    const lines = String(productText || '').split(/\\r?\\n/).map(clean).filter(Boolean);
+    const lines = String(productText || '').split(/\r?\n/).map(clean).filter(Boolean);
     const start = lines.findIndex(line => /^(?:Описание(?: товара)?|Описание товара[:：])$/i.test(line));
     if (start < 0) return null;
     const parts = [];
