@@ -67,6 +67,9 @@ class SingleDetailRefreshV16Tests(unittest.TestCase):
     def test_queue_summary_uses_detail_records_and_reports_coverage_buckets(self):
         conn = sqlite3.connect(mod.DB_PATH)
         conn.execute(
+            "UPDATE products SET image_url='https://example.test/product.jpg' WHERE chain='perekrestok' AND sap_code='XSEO' AND plu='100001'"
+        )
+        conn.execute(
             """INSERT INTO product_details(
                 chain,sap_code,plu,product_name,composition,description,nutrition_json,
                 attributes_json,details_text,first_imported_at,last_imported_at,last_captured_at
