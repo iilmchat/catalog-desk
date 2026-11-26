@@ -2,11 +2,13 @@
   "name": "catalog-desk-dom-regression",
   "private": true,
   "version": "0.0.0",
-  "description": "Offline DOM regression harness for Catalog Desk retailer userscripts",
+  "description": "Offline DOM and Chromium regression harness for Catalog Desk retailer userscripts",
   "scripts": {
-    "test:dom": "node --test test_userscript_dom_harness_v17.js"
+    "test:dom": "node --test test_userscript_dom_harness_v17.js",
+    "test:chromium": "node --test test_userscript_chromium_smoke_v17.js"
   },
   "devDependencies": {
-    "linkedom": "0.18.12"
+    "linkedom": "0.18.12",
+    "playwright": "1.56.1"
   }
 }
