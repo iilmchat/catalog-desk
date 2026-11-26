@@ -26,9 +26,15 @@ jobs:
         run: python -m pip install -r requirements_v14.txt
       - name: Run all Python tests
         run: python -m unittest discover -s . -p "test_*.py" -v
-      - name: Check browser userscript syntax
+      - name: Check browser JavaScript syntax
         run: |
+          node --check ui_v14/app.js
           node --check ui_v14/5ka_batch_enrichment_v16.user.js
           node --check ui_v14/pr_batch_enrichment_v16.user.js
           node --check 5ka_batch_enrichment_v16.user.js
           node --check pr_batch_enrichment_v16.user.js
+      - name: Run Perekrestok DOM parser regression tests
+        run: node test_perekrestok_dom_parser_v16.js
+
+      - name: Run Pyaterochka taxonomy and parser regression tests
+        run: node test_5ka_product_data_policy_v17.js

@@ -86,7 +86,7 @@ class MultiStoreBatchTests(unittest.TestCase):
             "store": {"sap_code": "XSEO"},
             "product": {
                 "plu": "100001",
-                "name": "Перекрёсток",
+                "name": "Перекрёсток", "category_path": "Молочные продукты",
                 "product_url": "https://www.perekrestok.ru/product/test--100001",
                 "composition": "Сыры, масло сливочное",
                 "nutrition": {"Белки": "14.5", "Жиры": "23.0"},
@@ -152,7 +152,7 @@ class MultiStoreBatchTests(unittest.TestCase):
 
         self.assertEqual(cross["products_without_details"], 0)
         self.assertEqual(cross["products_with_details"], 1)
-        self.assertEqual(cross["average_detail_percent"], 40.0)
+        self.assertEqual(cross["average_detail_percent"], 50.0)  # name and price present; image/classification unresolved
 
         self.assertEqual(five["task_counts"]["pending"], 1)
         self.assertEqual(five["task_counts"]["opened"], 0)
@@ -197,7 +197,7 @@ class MultiStoreBatchTests(unittest.TestCase):
                 nutrition_json,attributes_json,details_text,first_imported_at,last_imported_at,last_captured_at)
             VALUES('perekrestok','XSEO','100001','Перекрёсток','Сыры, пальмовое масло, сахар, арахис',
                 '{"Белки":"20","Жиры":"3","Углеводы":"5","Ккал":"250"}',
-                '{"Бренд":"Hochland","Вес":"0.15 кг","Срок хранения":"180 дн."}',
+                '{"Бренд":"Hochland","Вес":"0.15 кг","Срок хранения":"180 дн.","_catalog_meta":{"product_class":"food","field_applicability":{"nutrition":"applicable","ingredients":"applicable","materials":"not_applicable","shelf_life":"applicable","weight":"applicable","brand":"applicable"}}}',
                 'Состав Сыры, пальмовое масло, сахар, арахис',
                 '2026-11-24','2026-11-24','2026-11-24')
         """)

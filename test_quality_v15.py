@@ -42,7 +42,7 @@ class QualityRepairTests(unittest.TestCase):
 
     def test_quality_indicator_and_contradiction(self):
         quality = mod.quality_fields({
-            "name": "Сыр 250 г", "current_price": 159.99,
+            "name": "Сыр 250 г", "categories": "Сыр плавленый", "current_price": 159.99,
             "image_url": "https://catalog-images.x5static.net/product/1-main/320x320.jpeg",
             "composition": "Сыры, соль", "nutrition_json": '{"Белки":"14.5"}',
             "attributes_json": '{"Вес":"0.3 кг","Срок хранения":"180 дн.","Бренд":"Hochland"}',
@@ -68,25 +68,32 @@ class QualityRepairTests(unittest.TestCase):
         ):
             self.assertFalse(mod.has_complete_nutrition(partial))
 
-        score, blocks = mod._detail_coverage({
-            "composition": "Состав",
-            "description": "Описание",
-            "nutrition_json": json.dumps({"Белки": "14.5"}),
-            "attributes_json": "{}",
+        base_row = {
+            "name": "Сыр", "categories": "Сыр",
+            "current_price": 100, "image_url": "https://example.test/food.jpg",
+            "composition": "Состав", "description": "Описание",
+            "attributes_json": json.dumps({
+                "Бренд": "Тест", "Вес": "1 кг", "Срок хранения": "30 дней",
+                "_catalog_meta": {
+                    "product_class": "food",
+                    "field_applicability": {
+                        "nutrition": "applicable", "ingredients": "applicable",
+                        "materials": "not_applicable", "shelf_life": "applicable",
+                        "weight": "applicable", "brand": "applicable"
+                    }
+                }
+            }, ensure_ascii=False),
             "details_text": "Текст карточки",
-        })
-        self.assertEqual(score, 60)
-        self.assertNotIn("Пищевая ценность", blocks)
-
-        score, blocks = mod._detail_coverage({
-            "composition": "Состав",
-            "description": "Описание",
-            "nutrition_json": json.dumps(complete, ensure_ascii=False),
-            "attributes_json": "{}",
-            "details_text": "Текст карточки",
-        })
+        }
+        partial_row = {**base_row, "nutrition_json": json.dumps({"Белки": "14.5"})}
+        score, blocks = mod._detail_coverage(partial_row)
         self.assertEqual(score, 80)
-        self.assertIn("Пищевая ценность", blocks)
+        self.assertNotIn("БЖУ", blocks)
+
+        complete_row = {**base_row, "nutrition_json": json.dumps(complete, ensure_ascii=False)}
+        score, blocks = mod._detail_coverage(complete_row)
+        self.assertEqual(score, 100)
+        self.assertIn("БЖУ", blocks)
 
     def test_import_repairs_card_24139(self):
         tmp = tempfile.TemporaryDirectory()
@@ -129,6 +136,7 @@ class QualityRepairTests(unittest.TestCase):
             "store": {"sap_code": "XSEO"},
             "product": {
                 "plu": "24139", "name": "Сыр плавленый Hochland Сэндвич 45%, 150г",
+                "category_path": "Молочные продукты / Сыр плавленый",
                 "image_url": "https://catalog-images.x5static.net/product/1-main/800x800.jpeg",
                 "composition": None, "description": None,
                 "nutrition": {"Белки": "23.0", "Жиры": "4.1", "Ккал": "14.5"},

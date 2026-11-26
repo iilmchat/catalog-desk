@@ -41,6 +41,10 @@ from catalog_config import (
     validate_chain_url,
 )
 from catalog_migrations import backup_before_v15, migrate_v9_to_v10
+from product_data_policy_v17 import (
+    PRODUCT_CLASSES, applicability_for, calculate_completeness,
+    classify_product, composition_destination, is_food_classification,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "ui_v14"
@@ -176,8 +180,10 @@ def search_products(params: dict) -> dict:
             attrs = {}
         if not isinstance(nutrition, dict): nutrition = {}
         if not isinstance(attrs, dict): attrs = {}
-        composition = str(item.get("composition") or "")
-        text = str(item.get("details_text") or "")
+        meta = attrs.get("_catalog_meta") if isinstance(attrs.get("_catalog_meta"), dict) else {}
+        food_composition = is_food_classification(meta.get("product_class"), item.get("categories") or "")
+        composition = str(item.get("composition") or "") if food_composition else ""
+        text = str(item.get("details_text") or "") if food_composition else ""
         ok = True
         if conditions.get("min_protein") is not None and float(nutrition.get("Белки") or 0) < conditions["min_protein"]:
             ok = False
@@ -191,9 +197,11 @@ def search_products(params: dict) -> dict:
             ok = False
         if conditions.get("ingredient"):
             needle = conditions["ingredient"].lower()
-            if needle not in composition.lower() and needle not in text.lower():
+            if not food_composition or (needle not in composition.lower() and needle not in text.lower()):
                 ok = False
-        if conditions.get("sugar_free") and re.search(r"сахар|сахароз|глюкоз|фруктоз", composition + " " + text, re.I):
+        if conditions.get("sugar_free") and (
+            not food_composition or re.search(r"сахар|сахароз|глюкоз|фруктоз", composition + " " + text, re.I)
+        ):
             ok = False
         if conditions.get("min_shelf_days") is not None:
             days = _parse_days(str(attrs.get("Срок хранения") or attrs.get("Срок годности") or ""))
@@ -218,7 +226,8 @@ def ingredients_data(params: dict) -> dict:
     conn = connect_db()
     try:
         rows = conn.execute("""
-            SELECT p.sap_code,p.plu,p.name,p.current_price,p.product_url,d.composition
+            SELECT p.sap_code,p.plu,p.name,p.current_price,p.product_url,p.categories,
+                   d.composition,d.attributes_json
             FROM products p JOIN product_details d
               ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
             WHERE p.chain=? AND d.composition IS NOT NULL AND d.composition!=''
@@ -233,6 +242,13 @@ def ingredients_data(params: dict) -> dict:
     }
     items = []
     for row in rows:
+        try:
+            attrs = json.loads(row["attributes_json"] or "{}")
+        except Exception:
+            attrs = {}
+        meta = attrs.get("_catalog_meta") if isinstance(attrs, dict) and isinstance(attrs.get("_catalog_meta"), dict) else {}
+        if not is_food_classification(meta.get("product_class"), row["categories"] or ""):
+            continue
         composition = str(row["composition"] or "")
         if needle and needle.lower() not in composition.lower():
             continue
@@ -593,7 +609,7 @@ def has_complete_nutrition(value) -> bool:
 
 
 def quality_fields(row: dict) -> dict:
-    """Индикатор полноты карточки: 8 полей + источник + противоречия."""
+    """Category-aware completeness; N/A fields are excluded, unknown class is never 100%."""
     text = str(row.get("details_text") or "")
     attrs = row.get("attributes", row.get("attributes_json"))
     if isinstance(attrs, str):
@@ -609,18 +625,30 @@ def quality_fields(row: dict) -> dict:
         except Exception:
             nutrition = {}
     nutrition = nutrition if isinstance(nutrition, dict) else {}
-    composition = row.get("composition") or recover_composition_from_text(text)
+    meta = attrs.get("_catalog_meta") if isinstance(attrs.get("_catalog_meta"), dict) else {}
+    classification = meta.get("product_class")
+    if classification not in PRODUCT_CLASSES:
+        classification = classify_product(categories=row.get("categories") or row.get("category") or "")["product_class"]
+    applicability = meta.get("field_applicability")
+    if not isinstance(applicability, dict):
+        applicability = applicability_for(classification)
+    raw_composition = row.get("composition") or recover_composition_from_text(text)
+    composition = raw_composition if is_food_classification(classification) else None
+    materials = meta.get("materials_text") if classification == "non_food" else None
     description = row.get("description") or recover_description_from_text(text)
-    fields = {
-        "название": bool(row.get("name") or row.get("product_name")),
-        "цена": row.get("current_price") is not None,
-        "фото": bool(row.get("image_url")),
-        "состав": bool(composition),
-        "БЖУ": has_complete_nutrition(nutrition),
-        "вес": bool(attrs.get("Вес") or attrs.get("Масса нетто") or attrs.get("Объем") or attrs.get("Объём")),
-        "срок хранения": bool(attrs.get("Срок хранения") or attrs.get("Срок годности")),
-        "бренд": bool(attrs.get("Бренд")),
-    }
+    weight = attrs.get("Вес") or attrs.get("Масса нетто") or attrs.get("Объем") or attrs.get("Объём")
+    shelf_life = attrs.get("Срок хранения") or attrs.get("Срок годности")
+    policy = calculate_completeness(classification, {
+        "name": row.get("name") or row.get("product_name"),
+        "price": row.get("current_price"),
+        "image": row.get("image_url"),
+        "ingredients": composition,
+        "nutrition": nutrition if has_complete_nutrition(nutrition) else None,
+        "materials": materials,
+        "weight": weight,
+        "shelf_life": shelf_life,
+        "brand": attrs.get("Бренд"),
+    }, applicability)
     sources = {}
     if not row.get("composition") and composition:
         sources["состав"] = "анализ текста карточки"
@@ -628,14 +656,28 @@ def quality_fields(row: dict) -> dict:
         sources["описание"] = "анализ текста карточки"
     if not row.get("nutrition_json") and nutrition:
         sources["БЖУ"] = "анализ текста карточки"
+    legacy_fields = {
+        "название": policy["fields"]["name"]["status"] == "captured",
+        "цена": policy["fields"]["price"]["status"] == "captured",
+        "фото": policy["fields"]["image"]["status"] == "captured",
+        "состав": policy["fields"]["ingredients"]["status"] == "captured",
+        "материалы": policy["fields"]["materials"]["status"] == "captured",
+        "БЖУ": policy["fields"]["nutrition"]["status"] == "captured",
+        "вес": policy["fields"]["weight"]["status"] == "captured",
+        "срок хранения": policy["fields"]["shelf_life"]["status"] == "captured",
+        "бренд": policy["fields"]["brand"]["status"] == "captured",
+    }
     return {
-        "percent": round(sum(fields.values()) / len(fields) * 100),
-        "fields": fields,
+        "percent": policy["percent"], "completed": policy["completed"],
+        "required": policy["required"], "product_class": classification,
+        "classification_review_required": policy["classification_review_required"],
+        "fields": legacy_fields, "field_status": policy["fields"],
         "sources": sources,
         "contradictions": weight_contradictions(
             str(row.get("name") or row.get("product_name") or ""), attrs
         ),
-        "disclaimer": "Анализ текста состава, не лабораторная проверка продукта.",
+        "disclaimer": "Полнота учитывает только обязательные применимые поля; N/A исключается из знаменателя. Анализ состава эвристический, не лабораторная проверка продукта.",
+        "policy_version": policy["policy_version"],
     }
 
 
@@ -1210,6 +1252,7 @@ def product_detail(params: dict) -> dict:
             for key in ("nutrition_json", "attributes_json"):
                 try: extended[key.removesuffix("_json")] = json.loads(extended.get(key) or "{}")
                 except Exception: extended[key.removesuffix("_json")] = {}
+            extended["catalog_metadata"] = (extended.get("attributes") or {}).get("_catalog_meta", {})
         detail_history = []
         if d:
             for row in conn.execute("""
@@ -1320,6 +1363,51 @@ def persist_page_metadata() -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details_text: str) -> tuple[str | None, str | None, dict, dict]:
+    """Normalize generic retailer composition into ingredients or materials and retain provenance."""
+    attrs = dict(attrs or {})
+    supplied_meta = prod.get("catalog_metadata") if isinstance(prod.get("catalog_metadata"), dict) else {}
+    classification = prod.get("product_class") or supplied_meta.get("product_class")
+    taxonomy = prod.get("category_path") or prod.get("categories") or supplied_meta.get("category_path") or ""
+    inferred = classify_product(categories=taxonomy)
+    if classification not in PRODUCT_CLASSES:
+        classification = inferred["product_class"]
+    basis = supplied_meta.get("classification_basis") or prod.get("classification_basis") or inferred["classification_basis"]
+    confidence = supplied_meta.get("classification_confidence", prod.get("classification_confidence", inferred["classification_confidence"]))
+    applicability = prod.get("field_applicability") or supplied_meta.get("field_applicability")
+    if not isinstance(applicability, dict):
+        applicability = applicability_for(classification)
+    source_composition = prod.get("composition") or recover_composition_from_text(details_text)
+    destination = composition_destination(classification, prod.get("composition_source_label") or "Состав")
+    ingredients = (prod.get("ingredients") or source_composition) if classification in {"food", "pet_food"} else None
+    materials = (prod.get("materials") or supplied_meta.get("materials_text") or source_composition) if classification == "non_food" else None
+    unclassified = source_composition if classification == "unknown" else None
+    meta = {
+        "schema_version": 1, "policy_version": "1",
+        "product_class": classification, "classification_basis": basis,
+        "classification_confidence": confidence, "category_path": taxonomy,
+        "field_applicability": applicability,
+        "materials_text": materials, "unclassified_composition_text": unclassified,
+        "composition_kind": destination,
+        "extraction_status": {
+            "classification": "captured" if classification != "unknown" else "not_found",
+            "name": "captured" if prod.get("name") else "not_found",
+            "price": "captured" if prod.get("current_price") is not None else "not_found",
+            "image": "captured" if prod.get("image_url") else "not_found",
+            "ingredients": "captured" if ingredients else ("not_applicable" if applicability.get("ingredients") == "not_applicable" else "not_found"),
+            "materials": "captured" if materials else ("not_applicable" if applicability.get("materials") == "not_applicable" else "not_found"),
+            "nutrition": "captured" if has_complete_nutrition(nutrition) else ("not_applicable" if applicability.get("nutrition") == "not_applicable" else "not_found"),
+            "weight": "captured" if any(attrs.get(k) for k in ("Вес", "Масса нетто", "Объем", "Объём")) else "not_found",
+            "shelf_life": "not_applicable" if applicability.get("shelf_life") == "not_applicable" else ("captured" if attrs.get("Срок хранения") or attrs.get("Срок годности") else "not_found"),
+            "brand": "captured" if attrs.get("Бренд") else "not_found",
+            "description": "captured" if prod.get("description") else "not_found",
+        },
+        "provenance": {"source_url": prod.get("product_url"), "captured_at": prod.get("captured_at") or None},
+    }
+    attrs["_catalog_meta"] = meta
+    return ingredients, materials, attrs, meta
 
 
 def normalize_details_payload(payload: dict) -> list[dict]:
@@ -1495,13 +1583,16 @@ def import_single_detail_snapshot(payload: dict, expected: dict) -> dict:
             for nutrient, value in recovered_nutrition.items():
                 attrs[nutrient] = f"{value}{' ккал' if nutrient == 'Ккал' else ' г'}"
         text_for_repair = prod.get("details_text") or prod.get("raw_text") or ""
-        composition = prod.get("composition") or recover_composition_from_text(text_for_repair)
+        composition, materials, attrs, catalog_meta = _prepare_product_semantics(
+            prod, nutrition, attrs, text_for_repair
+        )
         description = prod.get("description") or recover_description_from_text(text_for_repair)
         detail_snapshot = {
             "name": prod.get("name"), "product_url": product_url,
             "image_url": prod.get("image_url"), "description": description,
-            "composition": composition, "nutrition": nutrition,
-            "attributes": attrs, "details_text": prod.get("details_text") or prod.get("raw_text"),
+            "composition": composition, "materials": materials,
+            "catalog_metadata": catalog_meta, "nutrition": nutrition,
+            "attributes": attrs, "details_text": text_for_repair,
         }
         details_json = safe_json(detail_snapshot)
         old = conn.execute(
@@ -1526,7 +1617,9 @@ def import_single_detail_snapshot(payload: dict, expected: dict) -> dict:
                 product_url=COALESCE(excluded.product_url,product_details.product_url),
                 image_url=COALESCE(excluded.image_url,product_details.image_url),
                 description=COALESCE(excluded.description,product_details.description),
-                composition=COALESCE(excluded.composition,product_details.composition),
+                composition=CASE
+                    WHEN instr(excluded.attributes_json, '"_catalog_meta"')>0 THEN excluded.composition
+                    ELSE COALESCE(excluded.composition,product_details.composition) END,
                 nutrition_json=CASE WHEN excluded.nutrition_json!='{}' THEN excluded.nutrition_json ELSE product_details.nutrition_json END,
                 attributes_json=CASE WHEN excluded.attributes_json!='{}' THEN excluded.attributes_json ELSE product_details.attributes_json END,
                 details_text=COALESCE(excluded.details_text,product_details.details_text),
@@ -1639,13 +1732,16 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                         for nutrient, value in recovered_nutrition.items():
                             attrs[nutrient] = f"{value}{' ккал' if nutrient == 'Ккал' else ' г'}"
                     text_for_repair = prod.get("details_text") or prod.get("raw_text") or ""
-                    composition = prod.get("composition") or recover_composition_from_text(text_for_repair)
+                    composition, materials, attrs, catalog_meta = _prepare_product_semantics(
+                        prod, nutrition, attrs, text_for_repair
+                    )
                     description = prod.get("description") or recover_description_from_text(text_for_repair)
                     detail_snapshot = {
                         "name": prod.get("name"), "product_url": prod.get("product_url"),
                         "image_url": prod.get("image_url"), "description": description,
-                        "composition": composition, "nutrition": nutrition,
-                        "attributes": attrs, "details_text": prod.get("details_text") or prod.get("raw_text"),
+                        "composition": composition, "materials": materials,
+                        "catalog_metadata": catalog_meta, "nutrition": nutrition,
+                        "attributes": attrs, "details_text": text_for_repair,
                     }
                     details_json = safe_json(detail_snapshot)
                     old = conn.execute(
@@ -1667,7 +1763,9 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                             product_url=COALESCE(excluded.product_url,product_details.product_url),
                             image_url=COALESCE(excluded.image_url,product_details.image_url),
                             description=COALESCE(excluded.description,product_details.description),
-                            composition=COALESCE(excluded.composition,product_details.composition),
+                            composition=CASE
+                    WHEN instr(excluded.attributes_json, '"_catalog_meta"')>0 THEN excluded.composition
+                    ELSE COALESCE(excluded.composition,product_details.composition) END,
                             nutrition_json=CASE WHEN excluded.nutrition_json!='{}' THEN excluded.nutrition_json ELSE product_details.nutrition_json END,
                             attributes_json=CASE WHEN excluded.attributes_json!='{}' THEN excluded.attributes_json ELSE product_details.attributes_json END,
                             details_text=COALESCE(excluded.details_text,product_details.details_text),
@@ -1785,22 +1883,15 @@ def set_favorite(data: dict) -> dict:
 
 
 def _detail_coverage(row: dict) -> tuple[int, list[str]]:
-    """Simple, transparent 5-block coverage score for manually exported product details."""
-    filled: list[str] = []
-    if str(row.get("composition") or "").strip(): filled.append("Состав")
-    if str(row.get("description") or "").strip(): filled.append("Описание")
-    try:
-        n = json.loads(row.get("nutrition_json") or "{}")
-    except Exception:
-        n = {}
-    if has_complete_nutrition(n): filled.append("Пищевая ценность")
-    try:
-        a = json.loads(row.get("attributes_json") or "{}")
-    except Exception:
-        a = {}
-    if isinstance(a, dict) and any(v not in (None, "", {}) for v in a.values()): filled.append("Характеристики")
-    if str(row.get("details_text") or "").strip(): filled.append("Текст карточки")
-    return round(len(filled) / 5 * 100), filled
+    """Queue coverage mirrors category-aware applicable-field completeness."""
+    quality = quality_fields(row)
+    fields = quality.get("field_status") or {}
+    filled = [item.get("label", key) for key, item in fields.items()
+              if item.get("status") == "captured"]
+    # Queue UI currently displays 20-point buckets; keep the bucket contract while
+    # the product card exposes the exact percentage and numerator/denominator.
+    score = int(round(float(quality.get("percent", 0)) / 20) * 20)
+    return max(0, min(100, score)), filled
 
 
 def enrichment_status(params: dict | None = None) -> dict:
@@ -1832,7 +1923,11 @@ def enrichment_status(params: dict | None = None) -> dict:
                 missing_gallery += 1
 
         detail_rows = conn.execute(
-            "SELECT * FROM product_details WHERE chain=?",
+            """SELECT d.*,p.name AS name,p.current_price,p.image_url,p.categories
+               FROM product_details d
+               LEFT JOIN products p
+                 ON p.chain=d.chain AND p.sap_code=d.sap_code AND p.plu=d.plu
+               WHERE d.chain=?""",
             (chain,),
         ).fetchall()
         detail_keys = {(str(r["sap_code"]), str(r["plu"])) for r in detail_rows}
@@ -1848,7 +1943,7 @@ def enrichment_status(params: dict | None = None) -> dict:
         ):
             counts[row["status"]] = int(row["n"])
 
-        scores = [_detail_coverage(dict(r))[0] for r in detail_rows]
+        scores = [quality_fields(dict(r))["percent"] for r in detail_rows]
         return {
             "chain": chain,
             "total_products": len(products),
