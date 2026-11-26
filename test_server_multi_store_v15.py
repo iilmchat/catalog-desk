@@ -152,7 +152,7 @@ class MultiStoreBatchTests(unittest.TestCase):
 
         self.assertEqual(cross["products_without_details"], 0)
         self.assertEqual(cross["products_with_details"], 1)
-        self.assertEqual(cross["average_detail_percent"], 20.0)  # unknown class cannot count N/A as complete
+        self.assertEqual(cross["average_detail_percent"], 25.0)  # exact average; unknown class remains incomplete
 
         self.assertEqual(five["task_counts"]["pending"], 1)
         self.assertEqual(five["task_counts"]["opened"], 0)
