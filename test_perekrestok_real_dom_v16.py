@@ -98,7 +98,7 @@ class PerekrestokRealDOMTests(unittest.TestCase):
     def test_brand_price_images_and_nutrition(self):
         self.assertEqual(self.dom.attrs.get("Бренд"), "Зелёная Линия")
         self.assertEqual(self.dom.price, "369.99")
-        self.assertGreaterEqual(len([x for x in self.dom.images if x]), 1)
+        self.assertEqual(len([x for x in self.dom.images if x]), 3)
         self.assertEqual(self.dom.attrs.get("Вес"), "0.15 кг")
         self.assertEqual(self.dom.attrs.get("Бренд"), "Зелёная Линия")
         self.assertEqual(self.dom.attrs.get("Страна производства"), "Россия")
