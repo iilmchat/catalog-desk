@@ -28,8 +28,10 @@ class SingleDetailRefreshV16Tests(unittest.TestCase):
         self.assertEqual((claimed["chain"], claimed["sap_code"], claimed["plu"]),
                          ("perekrestok", "XSEO", "100001"))
 
+        food_payload = self.fixture._payload()
+        food_payload["product"]["category_path"] = "Молочные продукты"
         result = mod.record_single_detail_refresh({
-            "token": created["token"], "payload": self.fixture._payload()
+            "token": created["token"], "payload": food_payload
         })
         self.assertTrue(result["accepted"])
         self.assertFalse(result["queue_changed"])
@@ -73,7 +75,7 @@ class SingleDetailRefreshV16Tests(unittest.TestCase):
                 "perekrestok", "XSEO", "100001", "Перекрёсток",
                 "Состав товара", "Описание товара",
                 '{"Белки":"14.5","Жиры":"23.0","Углеводы":"4.1","Ккал":"284"}',
-                '{"Бренд":"Тест"}', "Полный текст карточки",
+                '{"Бренд":"Тест","Вес":"1 кг","Срок хранения":"30 дней","_catalog_meta":{"product_class":"food","field_applicability":{"nutrition":"applicable","ingredients":"applicable","materials":"not_applicable","shelf_life":"applicable","weight":"applicable","brand":"applicable"}}}', "Полный текст карточки",
                 "2026-11-26", "2026-11-26", "2026-11-26",
             ),
         )
@@ -103,12 +105,16 @@ class SingleDetailRefreshV16Tests(unittest.TestCase):
             "chain": "perekrestok", "sap_code": "XSEO", "plu": "100001"
         })
         payload = self.fixture._payload()
+        payload["product"]["category_path"] = "Молочные продукты"
         payload["product"]["plu"] = "999999"
         with self.assertRaises(ValueError):
             mod.record_single_detail_refresh({"token": created["token"], "payload": payload})
 
         # A failed validation leaves the token reusable for the correct product.
         result = mod.record_single_detail_refresh({
-            "token": created["token"], "payload": self.fixture._payload()
+            "token": created["token"], "payload": {
+                **self.fixture._payload(),
+                "product": {**self.fixture._payload()["product"], "category_path": "Молочные продукты"}
+            }
         })
         self.assertTrue(result["accepted"])
