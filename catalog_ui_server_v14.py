@@ -1229,6 +1229,7 @@ def product_detail(params: dict) -> dict:
             for key in ("nutrition_json", "attributes_json"):
                 try: extended[key.removesuffix("_json")] = json.loads(extended.get(key) or "{}")
                 except Exception: extended[key.removesuffix("_json")] = {}
+            extended["catalog_metadata"] = (extended.get("attributes") or {}).get("_catalog_meta", {})
         detail_history = []
         if d:
             for row in conn.execute("""
@@ -1551,13 +1552,16 @@ def import_single_detail_snapshot(payload: dict, expected: dict) -> dict:
             for nutrient, value in recovered_nutrition.items():
                 attrs[nutrient] = f"{value}{' ккал' if nutrient == 'Ккал' else ' г'}"
         text_for_repair = prod.get("details_text") or prod.get("raw_text") or ""
-        composition = prod.get("composition") or recover_composition_from_text(text_for_repair)
+        composition, materials, attrs, catalog_meta = _prepare_product_semantics(
+            prod, nutrition, attrs, text_for_repair
+        )
         description = prod.get("description") or recover_description_from_text(text_for_repair)
         detail_snapshot = {
             "name": prod.get("name"), "product_url": product_url,
             "image_url": prod.get("image_url"), "description": description,
-            "composition": composition, "nutrition": nutrition,
-            "attributes": attrs, "details_text": prod.get("details_text") or prod.get("raw_text"),
+            "composition": composition, "materials": materials,
+            "catalog_metadata": catalog_meta, "nutrition": nutrition,
+            "attributes": attrs, "details_text": text_for_repair,
         }
         details_json = safe_json(detail_snapshot)
         old = conn.execute(
@@ -1695,13 +1699,16 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                         for nutrient, value in recovered_nutrition.items():
                             attrs[nutrient] = f"{value}{' ккал' if nutrient == 'Ккал' else ' г'}"
                     text_for_repair = prod.get("details_text") or prod.get("raw_text") or ""
-                    composition = prod.get("composition") or recover_composition_from_text(text_for_repair)
+                    composition, materials, attrs, catalog_meta = _prepare_product_semantics(
+                        prod, nutrition, attrs, text_for_repair
+                    )
                     description = prod.get("description") or recover_description_from_text(text_for_repair)
                     detail_snapshot = {
                         "name": prod.get("name"), "product_url": prod.get("product_url"),
                         "image_url": prod.get("image_url"), "description": description,
-                        "composition": composition, "nutrition": nutrition,
-                        "attributes": attrs, "details_text": prod.get("details_text") or prod.get("raw_text"),
+                        "composition": composition, "materials": materials,
+                        "catalog_metadata": catalog_meta, "nutrition": nutrition,
+                        "attributes": attrs, "details_text": text_for_repair,
                     }
                     details_json = safe_json(detail_snapshot)
                     old = conn.execute(
