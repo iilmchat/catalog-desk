@@ -99,7 +99,8 @@ test('Pyaterochka real DOM builds a scoped payload with clean description and co
   assert.doesNotMatch(scoped.productText, /Совершенно другой товар|Отзывы покупателей/);
 
   const payload = parser.buildPayload('35XY');
-  assert.equal(payload.chain, '5ka');
+  assert.equal(payload.source, '5ka.ru-visible-product-details-export');
+  assert.equal(payload.store.sap_code, '35XY');
   assert.equal(payload.product.plu, '4275044');
   assert.equal(payload.product.description,
     'Агар Dr. Bakers Professional обладает оптимальной прочностью геля* и не требует длительного кипячения для его образования. Идеально подходит для приготовления мармелада, суфле, зефира и других изделий.');
