@@ -46,7 +46,7 @@ FIELD_LABELS = {
 
 
 def _norm(value: Any) -> str:
-    return re.sub(r"\\s+", " ", str(value or "").casefold()).strip()
+    return re.sub(r"\s+", " ", str(value or "").casefold()).strip()
 
 
 def classify_product(categories: Any = "", breadcrumbs: Any = "") -> dict:
