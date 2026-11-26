@@ -106,7 +106,7 @@ test('Chromium: visible description is captured only after the page expands it',
     const before = await page.evaluate(() => window.__catalogDesk.buildPayload('XSEO').product.description);
     assert.equal(before, null);
 
-    await page.getByRole('button', { name: 'Показать полностью' }).click();
+    await page.locator('#expand-description').click();
     const after = await page.evaluate(() => ({
       visible: (() => {
         const node = document.querySelector('[data-qa="product-description"]');
