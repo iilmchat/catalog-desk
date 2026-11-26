@@ -43,7 +43,7 @@ from catalog_config import (
 from catalog_migrations import backup_before_v15, migrate_v9_to_v10
 from product_data_policy_v17 import (
     PRODUCT_CLASSES, applicability_for, calculate_completeness,
-    classify_product, composition_destination,
+    classify_product, composition_destination, is_food_classification,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -180,8 +180,10 @@ def search_products(params: dict) -> dict:
             attrs = {}
         if not isinstance(nutrition, dict): nutrition = {}
         if not isinstance(attrs, dict): attrs = {}
-        composition = str(item.get("composition") or "")
-        text = str(item.get("details_text") or "")
+        meta = attrs.get("_catalog_meta") if isinstance(attrs.get("_catalog_meta"), dict) else {}
+        food_composition = is_food_classification(meta.get("product_class"), item.get("categories") or "")
+        composition = str(item.get("composition") or "") if food_composition else ""
+        text = str(item.get("details_text") or "") if food_composition else ""
         ok = True
         if conditions.get("min_protein") is not None and float(nutrition.get("Белки") or 0) < conditions["min_protein"]:
             ok = False
@@ -195,9 +197,11 @@ def search_products(params: dict) -> dict:
             ok = False
         if conditions.get("ingredient"):
             needle = conditions["ingredient"].lower()
-            if needle not in composition.lower() and needle not in text.lower():
+            if not food_composition or (needle not in composition.lower() and needle not in text.lower()):
                 ok = False
-        if conditions.get("sugar_free") and re.search(r"сахар|сахароз|глюкоз|фруктоз", composition + " " + text, re.I):
+        if conditions.get("sugar_free") and (
+            not food_composition or re.search(r"сахар|сахароз|глюкоз|фруктоз", composition + " " + text, re.I)
+        ):
             ok = False
         if conditions.get("min_shelf_days") is not None:
             days = _parse_days(str(attrs.get("Срок хранения") or attrs.get("Срок годности") or ""))
@@ -222,7 +226,8 @@ def ingredients_data(params: dict) -> dict:
     conn = connect_db()
     try:
         rows = conn.execute("""
-            SELECT p.sap_code,p.plu,p.name,p.current_price,p.product_url,d.composition
+            SELECT p.sap_code,p.plu,p.name,p.current_price,p.product_url,p.categories,
+                   d.composition,d.attributes_json
             FROM products p JOIN product_details d
               ON d.chain=p.chain AND d.sap_code=p.sap_code AND d.plu=p.plu
             WHERE p.chain=? AND d.composition IS NOT NULL AND d.composition!=''
@@ -237,6 +242,13 @@ def ingredients_data(params: dict) -> dict:
     }
     items = []
     for row in rows:
+        try:
+            attrs = json.loads(row["attributes_json"] or "{}")
+        except Exception:
+            attrs = {}
+        meta = attrs.get("_catalog_meta") if isinstance(attrs, dict) and isinstance(attrs.get("_catalog_meta"), dict) else {}
+        if not is_food_classification(meta.get("product_class"), row["categories"] or ""):
+            continue
         composition = str(row["composition"] or "")
         if needle and needle.lower() not in composition.lower():
             continue
