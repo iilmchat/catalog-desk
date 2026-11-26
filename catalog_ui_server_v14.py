@@ -1937,7 +1937,7 @@ def enrichment_status(params: dict | None = None) -> dict:
         ):
             counts[row["status"]] = int(row["n"])
 
-        scores = [_detail_coverage(dict(r))[0] for r in detail_rows]
+        scores = [quality_fields(dict(r))["percent"] for r in detail_rows]
         return {
             "chain": chain,
             "total_products": len(products),
