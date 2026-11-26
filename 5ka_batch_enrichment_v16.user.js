@@ -155,7 +155,7 @@
     let block = start >= 0 ? productText.slice(start, start + 420) : productText.slice(0, 600);
     const compositionAt = block.search(/Состав(?=\s|[:：-]|$)/i);
     if (compositionAt > 0) block = block.slice(0, compositionAt);
-    const denominator = block.match(/(?:на\s*)?100\s*(?:г|мл)\b/i);
+    const denominator = block.match(/(?:на\s*)?100\s*(?:г|мл)(?=\s|$|[.,;])/i);
     if (denominator && denominator.index !== undefined) block = block.slice(denominator.index + denominator[0].length);
     const result = {};
     const specs = [
