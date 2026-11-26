@@ -2,7 +2,7 @@ import unittest
 
 from product_data_policy_v17 import (
     applicability_for, calculate_completeness, classify_product,
-    composition_destination,
+    composition_destination, is_food_classification,
 )
 
 
@@ -57,6 +57,14 @@ class ProductDataPolicyV17Tests(unittest.TestCase):
         self.assertEqual(result["percent"], 75)
         self.assertTrue(result["classification_review_required"])
         self.assertEqual(result["fields"]["nutrition"]["applicability"], "unknown")
+
+    def test_ingredient_search_requires_confirmed_food_class(self):
+        self.assertTrue(is_food_classification("food"))
+        self.assertTrue(is_food_classification("pet_food"))
+        self.assertFalse(is_food_classification("non_food"))
+        self.assertFalse(is_food_classification("unknown"))
+        self.assertTrue(is_food_classification(None, "Фрукты и овощные нарезки"))
+        self.assertFalse(is_food_classification(None, "Новогодние товары"))
 
     def test_generic_composition_label_routes_by_product_class(self):
         self.assertEqual(composition_destination("food"), "ingredients")
