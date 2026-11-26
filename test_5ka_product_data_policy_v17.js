@@ -64,6 +64,10 @@ const scoped = parser.productRootAndText();
 assert.equal(scoped.main, productRoot);
 assert.equal(scoped.title, productTitle);
 assert.equal(scoped.productText, realProductText);
+assert.equal(
+  parser.extractDescription(scoped.productText),
+  'Агар Dr. Bakers Professional обладает оптимальной прочностью геля* и не требует длительного кипячения для его образования. Идеально подходит для приготовления мармелада, суфле, зефира и других изделий.'
+);
 assert.deepEqual(parser.parseNutrition(scoped.productText), {
   Белки: '0.4', Жиры: '0.0', Углеводы: '0.0', Ккал: '174.0'
 });
