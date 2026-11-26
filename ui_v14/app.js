@@ -101,8 +101,17 @@ async function loadEnrichment(resetQueue=true){
 let massOffset=0,massSearchTimer=null,massCategoriesReady=false;
 const taskLabels={pending:'Ожидает',opened:'Открыта',exported:'JSON сохранён',processed:'Обработано',skipped:'Пропущено'};
 function renderMassSummary(s){
-  const cards=[[num(s.total),'ВСЕГО ТОВАРОВ','В базе магазина'],[num(s.processed),'ОБРАБОТАНО','Доп. JSON импортирован'],[num(s.pending),'ОЖИДАЮТ','Ещё не открывались'],[`${Number(s.processed_percent||0).toLocaleString('ru-RU')}%`,'ПРОГРЕСС','По отметкам импорта']];
-  $('#mass-summary').innerHTML=cards.map(x=>`<div class="mass-summary-card"><small>${x[1]}</small><strong>${x[0]}</strong><span>${x[2]}</span></div>`).join('');
+  const coverage=s.coverage_counts||{};
+  const breakdown=[100,80,60,40,20,0]
+    .filter(percent=>Number(coverage[String(percent)]||0)>0)
+    .map(percent=>`<span>${percent}%: <b>${num(coverage[String(percent)])}</b></span>`).join('');
+  const cards=[
+    `<div class="mass-summary-card"><small>ВСЕГО ТОВАРОВ</small><strong>${num(s.total)}</strong><span>В базе магазина</span></div>`,
+    `<div class="mass-summary-card mass-summary-processed"><small>ОБРАБОТАНО</small><strong>${num(s.processed)}</strong><span>Есть запись details</span><div class="mass-coverage-breakdown">${breakdown}</div></div>`,
+    `<div class="mass-summary-card"><small>ОЖИДАЮТ</small><strong>${num(s.pending)}</strong><span>Нет записи details</span></div>`,
+    `<div class="mass-summary-card"><small>ПРОГРЕСС</small><strong>${Number(s.processed_percent||0).toLocaleString('ru-RU')}%</strong><span>Доп. сведения импортированы</span></div>`
+  ];
+  $('#mass-summary').innerHTML=cards.join('');
 }
 function renderMassCategories(rows){
   $('#mass-category-count').textContent=`${rows.length} категорий`;
@@ -113,7 +122,7 @@ function renderMassRow(p){
   const img=safeUrl(p.local_image||p.image_url);const status=p.task_status||'pending';
   const actions=`<div class="mass-row-actions">${p.product_url?`<button class="view-button" data-mass-open data-sap="${esc(p.sap_code)}" data-plu="${esc(p.plu)}" data-url="${esc(safeUrl(p.product_url))}">Открыть ↗</button>`:'<span class="muted-chip">Нет URL</span>'}${status!=='processed'?`<button class="outline-button small" data-mass-exported data-sap="${esc(p.sap_code)}" data-plu="${esc(p.plu)}">JSON готов</button>`:''}${status==='skipped'?`<button class="outline-button small" data-mass-reset data-sap="${esc(p.sap_code)}" data-plu="${esc(p.plu)}">Вернуть</button>`:`<button class="text-button" data-mass-skip data-sap="${esc(p.sap_code)}" data-plu="${esc(p.plu)}">Пропустить</button>`}</div>`;
   const blocks=(p.detail_blocks||[]).join(' · ')||'Нет подробных сведений';
-  return `<tr><td><div class="product-cell">${img?`<img class="product-thumb" src="${esc(img)}" loading="lazy" alt="">`:`<div class="product-thumb placeholder">${state.chain==='5ka'?'5':'П'}</div>`}<div><div class="product-title">${esc(p.name||'Без названия')}</div><div class="product-sub">${esc((p.category_list||[]).join(', ')||p.categories||'')} · ${esc(blocks)}</div></div></div></td><td class="mono">${esc(p.plu)}</td><td class="price-strong">${money(p.current_price)}</td><td><div class="mass-progress"><i><b style="width:${p.detail_percent}%"></b></i><strong>${p.detail_percent}%</strong></div></td><td><span class="mass-status ${esc(status)}">${taskLabels[status]||status}</span></td><td>${actions}</td></tr>`;
+  return `<tr data-mass-row data-sap="${esc(p.sap_code)}" data-plu="${esc(p.plu)}"><td><div class="product-cell">${img?`<img class="product-thumb" src="${esc(img)}" loading="lazy" alt="">`:`<div class="product-thumb placeholder">${state.chain==='5ka'?'5':'П'}</div>`}<div><a href="#" class="product-title mass-product-link" data-mass-product>${esc(p.name||'Без названия')}</a><div class="product-sub">${esc((p.category_list||[]).join(', ')||p.categories||'')} · ${esc(blocks)}</div></div></div></td><td class="mono">${esc(p.plu)}</td><td class="price-strong">${money(p.current_price)}</td><td><div class="mass-progress"><i><b style="width:${p.detail_percent}%"></b></i><strong>${p.detail_percent}%</strong></div></td><td><span class="mass-status ${esc(status)}">${taskLabels[status]||status}</span></td><td>${actions}</td></tr>`;
 }
 async function loadMassEnrichment(reset=true){
   try{
@@ -140,10 +149,14 @@ $('#mass-search')?.addEventListener('input',()=>{clearTimeout(massSearchTimer);m
 $('#mass-prev')?.addEventListener('click',()=>{massOffset=Math.max(0,massOffset-25);loadMassEnrichment(false);});
 $('#mass-next')?.addEventListener('click',()=>{massOffset+=25;loadMassEnrichment(false);});
 $('#mass-queue-body')?.addEventListener('click',e=>{
+  const productLink=e.target.closest('[data-mass-product]');
+  if(productLink){e.preventDefault();const row=productLink.closest('tr[data-mass-row]');if(row)openProduct(row.dataset.sap,row.dataset.plu);return;}
   const open=e.target.closest('[data-mass-open]');if(open){const url=open.dataset.url;if(url)window.open(url,'_blank','noopener');updateMassTask(open,'opened');return;}
   const exported=e.target.closest('[data-mass-exported]');if(exported){updateMassTask(exported,'exported');return;}
   const skip=e.target.closest('[data-mass-skip]');if(skip){updateMassTask(skip,'skip');return;}
   const reset=e.target.closest('[data-mass-reset]');if(reset){updateMassTask(reset,'reset');return;}
+  const row=e.target.closest('tr[data-mass-row]');
+  if(row&&!e.target.closest('button,a,input,select,textarea,.mass-row-actions'))openProduct(row.dataset.sap,row.dataset.plu);
 });
 $('#mass-category-grid')?.addEventListener('click',e=>{const row=e.target.closest('[data-mass-category]');if(row){$('#mass-category-filter').value=row.dataset.massCategory;$('#mass-status-filter').value='all';loadMassEnrichment(true);}});
 $('#mass-open-next')?.addEventListener('click',async()=>{const tab=window.open('about:blank','_blank');try{const d=await api('/api/enrichment/queue?'+new URLSearchParams({status:'pending',completeness:'incomplete',limit:'1',offset:'0'}));const item=d.items?.[0];if(!item){tab?.close();toast('В очереди больше нет ожидающих карточек.');return;}const url=safeUrl(item.product_url);if(tab&&url)tab.location.href=url;else if(url)toast('Браузер заблокировал новую вкладку. Нажми «Открыть» в первой строке очереди.');await post('/api/enrichment/task',{sap_code:item.sap_code,plu:item.plu,action:'opened'});await loadMassEnrichment(true);}catch(err){tab?.close();toast(err.message);}});
