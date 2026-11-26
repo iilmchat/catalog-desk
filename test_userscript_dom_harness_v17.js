@@ -40,7 +40,9 @@ function renderInnerText(node) {
 }
 
 function loadUserscript(relativePath, html, chain, plu) {
-  const { document, window } = parseHTML(html);
+  const parsed = parseHTML(html);
+  const document = parsed.document || parsed;
+  const window = parsed.window || document.defaultView || parsed;
   const elementPrototype = window.HTMLElement?.prototype || window.Element.prototype;
 
   Object.defineProperty(elementPrototype, 'innerText', {
