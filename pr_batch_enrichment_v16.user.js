@@ -163,22 +163,24 @@
     let block = start >= 0 ? productText.slice(start, start + 420) : productText.slice(0, 600);
     const compositionAt = block.search(/\bСостав\b/i);
     if (compositionAt > 0) block = block.slice(0, compositionAt);
-    const denominator = block.match(/(?:на\s*)?100\s*(?:г|мл)\b/i);
+    const denominator = block.match(/(?:на\\s*)?100\\s*(?:г|мл)(?=\\s|$)/i);
     if (denominator && denominator.index !== undefined) block = block.slice(denominator.index + denominator[0].length);
     const result = {};
     const specs = [
       ['Белки', /белки/i],
       ['Жиры', /жиры/i],
       ['Углеводы', /углеводы/i],
-      ['Ккал', /(?:ккал|калорийность|энергетическая\s+ценность)/i]
+      ['Ккал', /(?:ккал|калорийность|энергетическая\\s+ценность)/i]
     ];
-    const firstLabel = /(?:белки|жиры|углеводы|ккал)\b/i.exec(block);
+    // JavaScript's \\b is ASCII-centric and does not create a boundary after
+    // Cyrillic labels. Use whitespace/punctuation boundaries for Russian DOM text.
+    const firstLabel = /(?:белки|жиры|углеводы|ккал)(?=\\s|[:：-]|$)/i.exec(block);
     const firstValue = /[0-9]+(?:[.,][0-9]+)?/.exec(block);
     const valueFirst = !!(firstLabel && firstValue && firstValue.index < firstLabel.index);
     for (const [key, label] of specs) {
       const labelText = label.source;
-      const before = new RegExp(`([0-9]+(?:[.,][0-9]+)?)\\s*(?:г|g)?\\s*${labelText}\\b`, 'i');
-      const after = new RegExp(`${labelText}\\s*[:：-]?\\s*([0-9]+(?:[.,][0-9]+)?)`, 'i');
+      const before = new RegExp(`([0-9]+(?:[.,][0-9]+)?)\\\\s*(?:г|g)?\\\\s*${labelText}(?=\\\\s|[:：-]|$)`, 'i');
+      const after = new RegExp(`${labelText}(?=\\\\s|[:：-]|$)\\\\s*[:：-]?\\\\s*([0-9]+(?:[.,][0-9]+)?)`, 'i');
       const match = valueFirst ? (block.match(before) || block.match(after)) : (block.match(after) || block.match(before));
       if (match) result[key] = match[1].replace(',', '.');
     }
