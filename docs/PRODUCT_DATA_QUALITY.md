@@ -53,7 +53,10 @@ Initial policy:
 | Brand | Applicable | Applicable | Applicable |
 
 The table is a policy baseline, not a claim that every retailer exposes every
-attribute. Category-level refinements can be added as evidence accumulates.
+attribute. In particular, materials are applicable to non-food but optional in the
+broad non-food class; category-specific profiles (e.g. seasonal decor, home goods,
+household chemicals) should define stricter required attributes when real retailer
+taxonomy and page fixtures are available.
 
 ## Composition semantics
 
@@ -83,7 +86,7 @@ The first policy requires:
 - Food: name, price, image, ingredients, complete BJU, weight/volume, shelf life,
   and brand.
 - Pet food: name, price, image, ingredients, complete BJU, weight/volume, and brand.
-- Non-food: name, price, image, materials, weight/volume, and brand.
+- Non-food baseline: name, price, image, weight/volume, and brand. Materials are captured when present and shown separately, but are not universally mandatory for every non-food category.
 - Unknown: name, price, image, and resolved classification.
 
 A non-food product can therefore be 100% complete without BJU. A food product
