@@ -83,7 +83,7 @@ def applicability_for(product_class: str) -> dict:
 
 def composition_destination(product_class: str, source_label: str = "Состав") -> str:
     """Map a retailer's generic 'Состав' label to a semantic destination."""
-    return "materials" if product_class == "non_food" else "ingredients"
+    return "materials" if product_class == "non_food" else ("ingredients" if product_class in {"food", "pet_food"} else "unclassified")
 
 
 def calculate_completeness(product_class: str, values: dict, applicability: dict | None = None) -> dict:
