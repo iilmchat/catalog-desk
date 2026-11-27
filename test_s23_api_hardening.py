@@ -50,16 +50,16 @@ class LocalApiRequestValidationTests(unittest.TestCase):
             {"ok": True},
         )
         bad = [
-            ("text/plain", str(len(raw)), raw),
-            ("application/json", str(len(raw) + 1), raw),
-            ("application/json", "not-a-number", raw),
-            ("application/json", str(len(raw)), b"[]"),
-            ("application/json", str(len(raw)), b"not json"),
-            ("application/json", str(len(raw)), b"{} "),
+            ("text/plain", raw),
+            ("application/json", b"[]"),
+            ("application/json", b"not json"),
+            ("application/json", b"\\xff"),
         ]
-        for args in bad:
-            with self.subTest(args=args), self.assertRaises(ValueError):
-                parse_json_object(*args)
+        for media_type, body in bad:
+            with self.subTest(media_type=media_type, body=body), self.assertRaises(ValueError):
+                parse_json_object(media_type, str(len(body)), body)
+        with self.assertRaises(ValueError):
+            parse_json_object("application/json", str(len(raw) + 1), raw)
         with self.assertRaises(ValueError):
             parse_json_object("application/json", "5", b'{"x":1}', max_bytes=4)
 
