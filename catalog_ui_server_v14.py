@@ -2700,7 +2700,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _validate_local_request(self):
         validate_local_request(
-            self.client_address, self.headers.get("Host"), self.headers.get("Origin")
+            self.client_address, self.headers.get("Host"), self.headers.get("Origin"),
+            expected_port=self.server.server_port,
         )
 
     def _body_json(self):
