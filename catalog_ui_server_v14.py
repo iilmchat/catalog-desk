@@ -1774,8 +1774,14 @@ def import_pending_details() -> tuple[int, int, int, list[str]]:
                         for nutrient, value in recovered_nutrition.items():
                             attrs[nutrient] = f"{value}{' ккал' if nutrient == 'Ккал' else ' г'}"
                     text_for_repair = prod.get("details_text") or prod.get("raw_text") or ""
+                    semantic_product = {
+                        **prod,
+                        "collection_mode": payload.get("collection_mode"),
+                        "source_url": payload.get("source_url"),
+                        "captured_at": captured,
+                    }
                     composition, materials, attrs, catalog_meta = _prepare_product_semantics(
-                        prod, nutrition, attrs, text_for_repair
+                        semantic_product, nutrition, attrs, text_for_repair
                     )
                     description = prod.get("description") or recover_description_from_text(text_for_repair)
                     detail_snapshot = {
