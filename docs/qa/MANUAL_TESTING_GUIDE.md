@@ -74,7 +74,27 @@
 - [ ] Фото из `photos5ka/` отображаются в карточке.
 - [ ] 110 совпадающих PLU в двух сетях различаются по «Сети».
 
-## 8. Дефект найден
+## 8. S24 multi-retailer read-only workspace
+
+Автоматические проверки read model: `python -m unittest tests.test_s24_read_model -v`.
+Полный набор: `python -m unittest discover -s tests -p "test_*.py" -v`.
+
+- [ ] Открыть «S24 · Каталоги»; legacy переключатель SAP остаётся только с Пятёрочкой и Перекрёстком.
+- [ ] Сводка показывает шесть фиксированных сетей; сети без импорта имеют нули, не фиктивные данные.
+- [ ] Количество confirmed products отдельно от observations; pending и invalid не считаются подтверждёнными товарами.
+- [ ] Фильтры по сети, identity status и поиску меняют выдачу; пагинация не дублирует/не пропускает строки.
+- [ ] Дикси: pending observations видны отдельно; URL candidates показаны как unverified/collision и не продвигаются автоматически.
+- [ ] Детали observation показывают исходный raw JSON, source hash, поля цены, категорий, assets и кандидатов.
+- [ ] `price_min` / `price_max` и другие price fields остаются раздельными; нет автоматически добавленной валюты/символа ₽ или смысловой метки regular/promo.
+- [ ] `category_slug` не превращается в category path/name.
+- [ ] Asset URL с `image_candidate` отображается как непроверенная ссылка; нет автоматической загрузки или встраивания фото.
+- [ ] GET `/api/s24/summary`, `/api/s24/products`, `/api/s24/observations/{id}`, `/api/s24/imports` отвечают без ошибок.
+- [ ] Отсутствующая S24-схема даёт понятный ответ `available=false`; UI не пытается создать/мигрировать таблицы.
+- [ ] POST на `/api/s24/*` не имеет маршрута записи; импорт из S24 UI невозможен.
+- [ ] Подключение read model использует SQLite URI `mode=ro` и `PRAGMA query_only=ON`; попытка SQL DELETE через read connection завершается ошибкой.
+- [ ] SHA-256 основного файла SQLite до/после серии GET-запросов совпадает; `PRAGMA quick_check` и `foreign_key_check` — без ошибок.
+
+## 9. Дефект найден
 
 Записать `CD-XXX` в [KNOWN_ISSUES.md](../KNOWN_ISSUES.md), статус `Open`,
 ссылка на шаг в [TODO_SPRINTS.md](../TODO_SPRINTS.md), приложить файл/шаг воспроизведения.

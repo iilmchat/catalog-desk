@@ -49,6 +49,32 @@
 
 Несоответствие отклоняется до записи в БД.
 
+## 2.1. Параллельная модель S24 — multi-retailer observations
+
+S24 — отдельный каталог сетей, не расширение legacy-ключа `(chain, sap_code, plu)`.
+
+| Свойство | Legacy V14–V17 | S24 |
+| :--- | :--- | :--- |
+| Идентичность | `(chain, sap_code, plu)` | `(retailer_key, external_product_id)` |
+| Источник | JSON выгрузки DOM и карточек | Полные retailer JSON snapshots |
+| Основная единица | Товар и его история | Неизменяемое наблюдение исходной записи |
+| Неразрешённый ID | Не применяется как отдельная модель | `pending` observation без stable product |
+| Цены | Legacy price history с прикладной семантикой | Отдельные raw fields, semantic role остаётся unclassified |
+| Активы | Локальные фото и detail gallery | Asset observations; URL-классификация не равна проверке изображения |
+
+S24 хранится в девяти таблицах с префиксами `retailer_`. Схема версии 1 и адаптеры находятся в `s24/schema_v1.py` и `s24/storage_v1.py`; guarded production runner — `tools/s24_production_import.py`. Идентичность уникальна только внутри `retailer_key`; одинаковые внешние ID разных сетей не означают один и тот же товар.
+
+**Read-only интерфейс:** `s24/read_model_v1.py` открывает существующий SQLite через URI `mode=ro`, включает `PRAGMA query_only=ON` и не применяет миграции. GET API `/api/s24/summary`, `/api/s24/products`, `/api/s24/observations/{id}` и `/api/s24/imports` используют только этот read model. UI показывает observations, не выдавая pending-строки за подтверждённые товары. Для S24 нет POST/import/enrichment actions.
+
+**Правила интерпретации:**
+- `price_min`, `price_max`, `price_old`, `price` и другие исходные price fields отображаются раздельно. UI не назначает валюту, не склеивает поля и не делает пересчёт.
+- `category_slug` и `category_id` остаются метаданными, если источник не предоставил путь/название категории.
+- `image_candidate` означает только локальную эвристическую классификацию URL. Только `verification_status=verified_image` считается проверенным фото.
+- URL-кандидаты идентичности Дикси не повышаются автоматически. Решение об identity resolution требует отдельного аудируемого события и подтверждающего evidence.
+- Legacy store switch продолжает управлять только Пятёрочкой и Перекрёстком. S24 retailer registry не добавляется в `catalog_config.py`.
+
+Подробности реализации и ручной приёмки: [S24 read-only UI](s24/S24_READ_ONLY_UI.md).
+
 ## 3. Слои и ответственность
 
 | Слой | Файлы | Ответственность |

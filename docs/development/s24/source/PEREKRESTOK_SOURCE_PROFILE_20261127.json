@@ -1,0 +1,31 @@
+{
+  "source_file": "perekrestok_products.json",
+  "source_sha256": "677521c71abdbfce439b641c3858195902c7b013b1a1ce1bf644ffb4cfd6c31e",
+  "source_size_bytes": 3274984,
+  "source_records": 6002,
+  "retailer_counts": {
+    "perekrestok": 6002
+  },
+  "unique_ids": 6002,
+  "duplicate_id_groups": 0,
+  "id_types": {
+    "str": 6002
+  },
+  "missing_ids": 0,
+  "invalid_ids": 0,
+  "price_field_presence": {
+    "price_min": 4011,
+    "price_max": 4011
+  },
+  "price_field_states": {
+    "price_min:value": 4011,
+    "price_max:value": 4011
+  },
+  "category_counts": {
+    "category_slug": 6002
+  },
+  "image_url_counts": {
+    "url_candidate": 6002
+  },
+  "source_unchanged_during_profile": true
+}

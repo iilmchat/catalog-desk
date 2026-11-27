@@ -42,6 +42,7 @@ from catalog_config import (
 )
 from catalog_migrations import backup_before_v15, migrate_v9_to_v10
 from s23_api_security import parse_json_object, validate_local_request
+from s24.read_model_v1 import get_summary as s24_summary, list_observations as s24_observations, get_observation as s24_observation, list_imports as s24_imports
 from product_data_policy_v17 import (
     PRODUCT_CLASSES, applicability_for, calculate_completeness,
     classify_product, composition_destination, is_food_classification,
@@ -2742,6 +2743,29 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/files/csv": return self._file(BASE_DIR / "pyaterochka_catalog_v9.csv", attachment=True)
             if path == "/api/health": return self._json(200, {"ok": True, "db_exists": DB_PATH.exists(), "db": DB_PATH.name, "version": "16.1.0-dev", "chains": list(STORES)})
             if path == "/api/stores": return self._json(200, stores_data())
+
+            if path == "/api/s24/summary": return self._json(200, s24_summary(DB_PATH))
+            if path == "/api/s24/products":
+                return self._json(200, s24_observations(
+                    DB_PATH,
+                    retailer_key=(params.get("retailer") or ["all"])[0],
+                    identity_status=(params.get("identity_status") or ["all"])[0],
+                    query=(params.get("q") or [""])[0],
+                    page=(params.get("page") or ["1"])[0],
+                    page_size=(params.get("page_size") or ["25"])[0],
+                ))
+            if path == "/api/s24/imports":
+                return self._json(200, s24_imports(
+                    DB_PATH, limit=(params.get("limit") or ["50"])[0]
+                ))
+            s24_detail_match = re.fullmatch(r"/api/s24/observations/([0-9]+)", path)
+            if s24_detail_match:
+                detail = s24_observation(DB_PATH, int(s24_detail_match.group(1)))
+                if detail is None: return self._json(404, {"error": "S24 observation not found"})
+                return self._json(200, detail)
+            if path.startswith("/api/s24/"):
+                return self._json(404, {"error": "Unknown S24 read-only route"})
+
             if path == "/api/compare": return self._json(200, compare_data(params))
             if path == "/api/search": return self._json(200, search_products(params))
             if path == "/api/ingredients": return self._json(200, ingredients_data(params))

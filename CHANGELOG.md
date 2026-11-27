@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased] — S24.5 multi-retailer catalog UI
+
+### Added
+- Отдельный S24 read model и GET API для сводки сетей, наблюдений, исходных деталей и журнала импортов.
+- Экран «S24 · Каталоги» с раздельными показателями подтверждённых товаров/наблюдений, фильтрами, пагинацией и деталями исходной записи.
+- Автотесты read-only модели: недоступная схема, сводка, фильтры, детали, импортный журнал и запрет записи через SQLite read-only connection.
+
+### Changed
+- Legacy store switch и `catalog_config.py` остаются только для Пятёрочки/Перекрёстка; S24 использует отдельные retailer keys и не смешивается с legacy SAP/PLU моделью.
+- S24 read queries открывают SQLite `mode=ro` с `PRAGMA query_only=ON`; read model не создаёт и не мигрирует схему.
+
+### Safety
+- S24 UI не предоставляет импорт, identity promotion, enrichment, запись цены или изменение исходного наблюдения.
+- Ценовые поля показываются в исходном виде без валюты и смысловой интерпретации; asset URL не считается проверенным изображением.
+
+### Verified
+- GitHub Actions CI #183: Python, JS syntax, DOM harness и Chromium smoke на captured pages завершились успешно.
+- Локальный disposable-DB smoke: 114 Python tests OK; S24 summary/products/observation detail/imports и static assets доступны; POST на S24 mutation path отклонён с 404.
+- Фактические итоги: 6 imports, 152,874 confirmed products, 159,758 observations, 6,884 pending Dixy, 6,593 identity candidates, 767,683 price observations, 324,760 category observations, 159,758 assets, 0 verified assets.
+- Production DB main-file SHA-256 и WAL fingerprint совпали до/после; проверялась отдельная SQLite Backup API копия (`quick_check=ok`, FK=0). Полный отчёт: [S24_5_UI_SMOKE_20261127.md](docs/development/s24/S24_5_UI_SMOKE_20261127.md).
+- Осталась ручная визуальная приёмка нового S24 view в графическом браузере; Chromium workflow проверяет captured legacy pages, не новый S24 экран.
+
+
 ## [Unreleased] — S23 API hardening
 
 ### Added

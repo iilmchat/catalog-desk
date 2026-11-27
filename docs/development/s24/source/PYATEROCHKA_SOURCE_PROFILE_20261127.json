@@ -1,0 +1,106 @@
+{
+  "source_file": "pyaterochka_products.json",
+  "source_path": "D:\\Temp\\catalog-desk\\pyaterochka_products.json",
+  "source_fingerprint_before": {
+    "sha256": "d78233148c770f00687cf75e10daa32ea19df0157ef58f98c9fc4dc519c6d345",
+    "size_bytes": 3148337,
+    "mtime_ns": 1795778915844286900
+  },
+  "profiled_at_utc": "2026-11-27T13:01:16.007907+00:00",
+  "json_root_type": "list",
+  "records_root_key": null,
+  "source_records": 5643,
+  "top_level_keys": [],
+  "record_keys": [
+    "badge",
+    "category_slug",
+    "image_url",
+    "name",
+    "price_max",
+    "price_min",
+    "product_id",
+    "retailer",
+    "scraped_at",
+    "url"
+  ],
+  "retailer_value_counts": {
+    "retailer": {
+      "pyaterochka": 5643
+    }
+  },
+  "identity_fields": {
+    "product_id": {
+      "present": 5643,
+      "types": {
+        "str": 5643
+      },
+      "null_or_empty": 0,
+      "unique_nonempty": 5643,
+      "duplicate_groups": 0,
+      "sample": [
+        "4201519",
+        "4328736",
+        "4280526",
+        "4295038",
+        "4150385"
+      ]
+    }
+  },
+  "price_fields": {
+    "price_min": {
+      "present": 5643,
+      "states": {
+        "value": 5643
+      },
+      "types": {
+        "float": 5643
+      }
+    },
+    "price_max": {
+      "present": 5643,
+      "states": {
+        "value": 5643
+      },
+      "types": {
+        "float": 5643
+      }
+    }
+  },
+  "category_fields": {
+    "category_slug": {
+      "present": 5643,
+      "states": {
+        "value": 5643
+      },
+      "types": {
+        "str": 5643
+      }
+    }
+  },
+  "url_fields": {
+    "url": {
+      "present": 5643,
+      "states": {
+        "value": 5643
+      },
+      "types": {
+        "str": 5643
+      }
+    },
+    "image_url": {
+      "present": 5643,
+      "states": {
+        "value": 5643
+      },
+      "types": {
+        "str": 5643
+      }
+    }
+  },
+  "source_fingerprint_after": {
+    "sha256": "d78233148c770f00687cf75e10daa32ea19df0157ef58f98c9fc4dc519c6d345",
+    "size_bytes": 3148337,
+    "mtime_ns": 1795778915844286900
+  },
+  "source_unchanged_during_profile": true
+}

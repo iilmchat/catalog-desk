@@ -1,0 +1,34 @@
+{
+  "source_file": "chizhik_products.json",
+  "source_sha256": "083bcf673874b073cfeee7c97f0f5e170c8d7dae9a786f6b1424a558c8e0e711",
+  "source_size_bytes": 2469901,
+  "source_mtime_ns": 1795720914000000000,
+  "source_records": 3231,
+  "retailer_counts": {
+    "chizhik": 3231
+  },
+  "unique_ids": 3231,
+  "duplicate_id_groups": 0,
+  "duplicate_ids_sample": {},
+  "id_types": {
+    "integer": 3231
+  },
+  "missing_ids": 0,
+  "invalid_ids": 0,
+  "price_field_presence": {
+    "price": 3231,
+    "promo_price": 3231
+  },
+  "price_field_states": {
+    "price:value": 1131,
+    "promo_price:null": 3231,
+    "price:null": 2100
+  },
+  "category_counts": {
+    "category_path_items": 3657
+  },
+  "image_url_counts": {
+    "url_candidate": 3231
+  },
+  "source_unchanged_during_profile": true
+}
