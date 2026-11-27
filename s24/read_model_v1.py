@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +81,7 @@ def _group_counts(conn: sqlite3.Connection, sql: str, key: str) -> dict[str, int
 
 def get_summary(database: str | Path) -> dict[str, Any]:
     """Return S24 aggregate counts without mutating the database."""
-    with open_readonly(database) as conn:
+    with closing(open_readonly(database)) as conn:
         available, reason = _schema_state(conn)
         if not available:
             return {
@@ -340,7 +341,7 @@ def list_observations(
         args.extend([like] * 5)
     clause = " WHERE " + " AND ".join(where) if where else ""
 
-    with open_readonly(database) as conn:
+    with closing(open_readonly(database)) as conn:
         available, reason = _schema_state(conn)
         if not available:
             return {"available": False, "reason": reason, "items": [], "total": 0, "page": page, "page_size": page_size}
@@ -391,7 +392,7 @@ def get_observation(database: str | Path, observation_id: int) -> dict[str, Any]
     if observation_id < 1:
         raise ValueError("observation_id must be positive")
 
-    with open_readonly(database) as conn:
+    with closing(open_readonly(database)) as conn:
         available, reason = _schema_state(conn)
         if not available:
             return {"available": False, "reason": reason}
@@ -419,7 +420,7 @@ def list_imports(database: str | Path, *, limit: int = 50) -> dict[str, Any]:
         limit = min(200, max(1, int(limit)))
     except (TypeError, ValueError):
         raise ValueError("limit must be an integer") from None
-    with open_readonly(database) as conn:
+    with closing(open_readonly(database)) as conn:
         available, reason = _schema_state(conn)
         if not available:
             return {"available": False, "reason": reason, "items": []}
