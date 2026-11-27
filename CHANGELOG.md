@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] — S23 API hardening
+
+### Added
+- Полевая provenance в `attributes_json._catalog_meta` (schema v2): для каждого реально captured-поля фиксируются логический источник, URL, время снимка и метод извлечения. Legacy `schema_version=1` сохраняется для чтения; SQLite migration и массовое переписывание не выполняются.
+- Изолированный модуль `s23_api_security.py` и unit tests для loopback peer, Host/Origin, типа содержимого, размера, UTF-8 и JSON object.
+
+### Fixed
+- Локальный HTTP handler отклоняет запросы не с loopback, неподходящий Host/Origin и некорректные или чрезмерные JSON POST bodies. Разрешены локальный UI и retailer origins, используемые userscripts.
+- Provenance получает `collection_mode`, `source_url` и `captured_at` из корневого snapshot payload как для single refresh, так и для обычного detail import.
+
 Все значимые изменения проекта фиксируются в этом файле.
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
