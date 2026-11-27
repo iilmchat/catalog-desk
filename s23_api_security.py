@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+_ALLOWED_PAGE_ORIGINS = {"https://5ka.ru", "https://www.5ka.ru", "https://perekrestok.ru", "https://www.perekrestok.ru"}
 
 
 def validate_local_request(client_address, host_header: str | None, origin_header: str | None) -> None:
@@ -33,12 +34,16 @@ def validate_local_request(client_address, host_header: str | None, origin_heade
     origin_value = str(origin_header or "").strip()
     if origin_value:
         origin = urlsplit(origin_value)
-        if (origin.scheme.lower() != "http" or
-                (origin.hostname or "").lower() not in _ALLOWED_HOSTS or
-                origin.netloc.lower() != host_value.lower() or
+        local_origin = (
+            origin.scheme.lower() == "http" and
+            (origin.hostname or "").lower() in _ALLOWED_HOSTS and
+            origin.netloc.lower() == host_value.lower()
+        )
+        retailer_origin = origin_value.rstrip("/").lower() in _ALLOWED_PAGE_ORIGINS
+        if (not (local_origin or retailer_origin) or
                 origin.username is not None or origin.password is not None or
                 origin.path not in ("", "/") or origin.query or origin.fragment):
-            raise ValueError("Origin не совпадает с локальным интерфейсом")
+            raise ValueError("Origin не разрешён для локального интерфейса")
 
 
 def parse_json_object(content_type: str | None, content_length: str | None,
