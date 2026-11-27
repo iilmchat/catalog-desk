@@ -1396,7 +1396,7 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
         "weight": "captured" if any(attrs.get(k) for k in ("Вес", "Масса нетто", "Объем", "Объём")) else "not_found",
         "shelf_life": "not_applicable" if applicability.get("shelf_life") == "not_applicable" else ("captured" if attrs.get("Срок хранения") or attrs.get("Срок годности") else "not_found"),
         "brand": "captured" if attrs.get("Бренд") else "not_found",
-        "description": "captured" if prod.get("description") else "not_found",
+        "description": "captured" if (prod.get("description") or recover_description_from_text(details_text)) else "not_found",
     }
     source_url = prod.get("product_url") or prod.get("source_url")
     captured_at = prod.get("captured_at") or None
@@ -1410,13 +1410,13 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
         "name": "name",
         "price": "current_price",
         "image": "image_url",
-        "ingredients": "composition",
-        "materials": "materials",
-        "nutrition": "nutrition",
+        "ingredients": "composition_or_details_text",
+        "materials": "materials_or_details_text",
+        "nutrition": "nutrition_or_details_text",
         "weight": "attributes",
         "shelf_life": "attributes",
         "brand": "attributes",
-        "description": "description",
+        "description": "description_or_details_text",
     }
     field_provenance = {
         field: {
