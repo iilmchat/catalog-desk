@@ -26,7 +26,7 @@
                          Excel / CSV
 ```
 
-**Одиночное обновление V16:** интерфейс выпускает одноразовый токен, связанный с точным `(chain, sap_code, plu)`. Он действует 10 минут и принимается один раз. Отдельный импорт обновляет `product_details`, `product_detail_history`, `product_detail_imports` и `product_images`, не изменяя `enrichment_tasks`, `enrichment_task_events` или `enrichment_batch_states`.
+**Одиночное обновление V16:** интерфейс выпускает одноразовый токен, связанный с точным `(chain, sap_code, plu)`. Он действует 10 минут; `claim` повторно возвращает привязку к товару и не потребляет токен, а успешный `record` допускается только одним параллельным вызовом и потребляет токен. Токены хранятся в памяти процесса, поэтому перезапуск сервера аннулирует незавершённые запросы. Отдельный импорт обновляет `product_details`, `product_detail_history`, `product_detail_imports` и `product_images`, не изменяя `enrichment_tasks`, `enrichment_task_events` или `enrichment_batch_states`.
 
 **Принцип сбора:** bookmarklet/userscript читает только то, что уже отображено на открытой странице. Скрытые API магазина, чтение cookies и обход CAPTCHA не используются. CAPTCHA означает остановку и ручную проверку.
 
