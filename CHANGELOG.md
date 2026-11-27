@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] — S24.5 multi-retailer catalog UI
+
+### Added
+- Отдельный S24 read model и GET API для сводки сетей, наблюдений, исходных деталей и журнала импортов.
+- Экран «S24 · Каталоги» с раздельными показателями подтверждённых товаров/наблюдений, фильтрами, пагинацией и деталями исходной записи.
+- Автотесты read-only модели: недоступная схема, сводка, фильтры, детали, импортный журнал и запрет записи через SQLite read-only connection.
+
+### Changed
+- Legacy store switch и `catalog_config.py` остаются только для Пятёрочки/Перекрёстка; S24 использует отдельные retailer keys и не смешивается с legacy SAP/PLU моделью.
+- S24 read queries открывают SQLite `mode=ro` с `PRAGMA query_only=ON`; read model не создаёт и не мигрирует схему.
+
+### Safety
+- S24 UI не предоставляет импорт, identity promotion, enrichment, запись цены или изменение исходного наблюдения.
+- Ценовые поля показываются в исходном виде без валюты и смысловой интерпретации; asset URL не считается проверенным изображением.
+
 ## [Unreleased] — S23 API hardening
 
 ### Added
