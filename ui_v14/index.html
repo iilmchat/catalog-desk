@@ -23,6 +23,7 @@
       <button class="nav-link" data-view="favorites"><span class="nav-ico">♡</span>Избранное <span class="nav-count" id="nav-favorite-count">0</span></button>
       <div class="nav-caption nav-caption-spaced">ДАННЫЕ</div>
       <button class="nav-link" data-view="collection"><span class="nav-ico">⇧</span>Сбор и импорты</button>
+      <button class="nav-link" data-view="s24"><span class="nav-ico">◉</span>S24 · Каталоги</button>
     </nav>
     <div class="sidebar-bottom"><div class="sidebar-note"><span>✦</span><div><strong>История цен</strong><p>Каждая новая выгрузка пополняет хронологию наблюдений.</p></div></div><div class="sidebar-version">Локальная база · V16.1.0</div></div>
   </aside>
@@ -131,6 +132,73 @@
       <section class="panel coverage-panel"><div class="panel-head"><div><div class="eyebrow">ПОЛНОТА СБОРА</div><h2>Категории и страницы</h2></div><span class="subtle-count" id="coverage-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>КАТЕГОРИЯ</th><th>ТОВАРОВ</th><th>СТРАНИЦЫ</th><th>ПРОПУСКИ*</th><th>ФАЙЛОВ</th><th>ПОСЛЕДНИЙ СНИМОК</th><th>СТАТУС</th></tr></thead><tbody id="coverage-body"><tr><td colspan="7" class="empty-cell">Загружаем категории…</td></tr></tbody></table></div><p class="chart-footnote">* Пропуски оцениваются по номерам ссылок пагинации, видимым в браузере; это не гарантированное общее число страниц.</p></section>
       <section class="panel"><div class="panel-head"><div><div class="eyebrow">АВТОМАТИЗАЦИЯ</div><h2>План ручного сбора и журнал ошибок</h2></div><div class="intro-actions"><button class="outline-button" id="run-schedule">Отметить план на сегодня</button><button class="outline-button" id="run-backup">Создать бэкап</button><button class="outline-button" id="refresh-errors">Обновить ошибки</button></div></div><div id="schedule-info" class="muted-hint">План ручных выгрузок по сетям. Сбор выполняется в открытом браузере из видимого DOM; автоматически не запускается.</div><div id="errors-body" class="ranking-list"><div class="empty-inline">Ошибок не зафиксировано.</div></div></section>
       <section class="panel exports-panel-full"><div class="panel-head"><div><div class="eyebrow">ЖУРНАЛ</div><h2>Последние выгрузки</h2></div><span class="subtle-count" id="exports-count">—</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>ФАЙЛ</th><th>КАТЕГОРИЯ</th><th>СТР.</th><th>ТОВАРОВ</th><th>НАБЛЮДЕНИЕ</th><th>ИМПОРТ</th></tr></thead><tbody id="exports-body"><tr><td colspan="6" class="empty-cell">Загружаем…</td></tr></tbody></table></div></section>
+    </section>
+
+
+    <section class="view" id="view-s24">
+      <div class="page-intro compact">
+        <div>
+          <div class="eyebrow green">S24 · MULTI-RETAILER OBSERVATIONS</div>
+          <h1>Каталоги сетей</h1>
+          <p>Отдельная модель S24: подтверждённые товары, исходные наблюдения и нерешённая идентичность. Экран работает только на чтение и не связан с legacy-переключателем SAP.</p>
+        </div>
+        <div class="intro-actions"><span class="status-chip done">READ ONLY</span><button class="outline-button" id="s24-refresh">Обновить S24</button></div>
+      </div>
+
+      <div class="stat-grid s24-stat-grid" id="s24-stat-grid">
+        <div class="stat-card stat-primary"><div class="stat-label">ПОДТВЕРЖДЁННЫЕ ТОВАРЫ</div><div class="stat-value">—</div><div class="stat-foot">Уникальные ID внутри сети</div></div>
+        <div class="stat-card"><div class="stat-label">НАБЛЮДЕНИЯ</div><div class="stat-value">—</div><div class="stat-foot">Строки исходных снимков</div></div>
+        <div class="stat-card"><div class="stat-label">PENDING ID</div><div class="stat-value">—</div><div class="stat-foot">Не объединены с товарами</div></div>
+        <div class="stat-card"><div class="stat-label">КАНДИДАТЫ ID</div><div class="stat-value">—</div><div class="stat-foot">Не подтверждены</div></div>
+        <div class="stat-card"><div class="stat-label">ЦЕНОВЫЕ ПОЛЯ</div><div class="stat-value">—</div><div class="stat-foot">Сырые price observations</div></div>
+        <div class="stat-card"><div class="stat-label">АКТИВЫ</div><div class="stat-value">—</div><div class="stat-foot">Фото не считаются проверенными</div></div>
+      </div>
+
+      <section class="panel s24-panel">
+        <div class="panel-head"><div><div class="eyebrow">ПО СЕТЯМ</div><h2>Сводка S24</h2><p class="panel-subtitle">Сети без импортов показываются с нулевыми значениями, а не скрываются.</p></div></div>
+        <div class="table-scroll">
+          <table class="data-table s24-table">
+            <thead><tr><th>СЕТЬ</th><th>ИМПОРТЫ</th><th>ПОДТВЕРЖДЁННЫЕ</th><th>OBSERVATIONS</th><th>RESOLVED</th><th>PENDING</th><th>ЦЕНЫ</th><th>АКТИВЫ / VERIFIED</th><th>КАНДИДАТЫ</th></tr></thead>
+            <tbody id="s24-retailers-body"><tr><td colspan="9" class="empty-cell">Загружаем S24…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel s24-panel">
+        <div class="panel-head"><div><div class="eyebrow">ИСТОЧНИКИ</div><h2>Импорты JSON</h2><p class="panel-subtitle">Хеш, размер снимка и статус фиксируются импортёром. UI не запускает повторный импорт.</p></div><span class="subtle-count" id="s24-import-count">—</span></div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>СЕТЬ</th><th>ФАЙЛ</th><th>SHA-256</th><th>СТРОКИ</th><th>COMMITTED</th><th>СТАТУС</th><th>ИМПОРТ</th></tr></thead>
+            <tbody id="s24-imports-body"><tr><td colspan="7" class="empty-cell">Загружаем импорты…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel s24-panel">
+        <div class="panel-head"><div><div class="eyebrow">ИСХОДНЫЕ СНИМКИ</div><h2>Наблюдения товаров</h2><p class="panel-subtitle">Одна строка — одно наблюдение источника. Pending-записи не превращаются в подтверждённые товары.</p></div><span class="subtle-count" id="s24-observations-total">—</span></div>
+        <div class="toolbar s24-toolbar">
+          <label>Сеть<select id="s24-retailer-filter"><option value="all">Все сети</option><option value="auchan">Ашан</option><option value="globus">Глобус</option><option value="dixy">Дикси</option><option value="chizhik">Чижик</option><option value="perekrestok">Перекрёсток</option><option value="5ka">Пятёрочка</option></select></label>
+          <label>Идентичность<select id="s24-identity-filter"><option value="all">Все статусы</option><option value="resolved">Resolved</option><option value="pending">Pending</option><option value="invalid">Invalid</option></select></label>
+          <label class="s24-search">Поиск<input id="s24-query" type="search" placeholder="Название, бренд, внешний ID…"></label>
+          <button class="primary-button" id="s24-search-button">Найти</button>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table s24-observation-table">
+            <thead><tr><th>OBSERVATION</th><th>СЕТЬ</th><th>ТОВАР</th><th>ВНЕШНИЙ ID</th><th>IDENTITY</th><th>ЦЕНОВЫЕ ПОЛЯ</th><th>КАТЕГОРИИ</th><th>ASSETS</th><th></th></tr></thead>
+            <tbody id="s24-observations-body"><tr><td colspan="9" class="empty-cell">Загружаем наблюдения…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <span id="s24-page-info">Страница 1</span>
+          <div><button class="outline-button small" id="s24-prev-page">← Назад</button><button class="outline-button small" id="s24-next-page">Вперёд →</button></div>
+        </div>
+      </section>
+
+      <section class="panel s24-detail-panel" id="s24-observation-detail" hidden>
+        <div class="panel-head"><div><div class="eyebrow">SOURCE TRACE</div><h2 id="s24-detail-title">Наблюдение</h2></div><button class="outline-button small" id="s24-detail-close">Закрыть</button></div>
+        <div id="s24-detail-content"></div>
+      </section>
+      <div class="info-strip s24-readonly-note"><span>ⓘ</span><div>Все значения цен показываются с исходным именем поля. Семантика цены и валюта не выводятся. Категории, URL-фото и изображения не считаются проверенными только по наличию ссылки.</div></div>
     </section>
 
     <footer class="app-footer"><span>Catalog Desk V16.1.0</span><span>Python · Pure JavaScript · SQLite · <span id="footer-store">Пятёрочка · SAP 35XY</span></span></footer>
