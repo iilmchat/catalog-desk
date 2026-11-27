@@ -10,7 +10,7 @@ _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _ALLOWED_PAGE_ORIGINS = {"https://5ka.ru", "https://www.5ka.ru", "https://perekrestok.ru", "https://www.perekrestok.ru"}
 
 
-def validate_local_request(client_address, host_header: str | None, origin_header: str | None) -> None:
+def validate_local_request(client_address, host_header: str | None, origin_header: str | None, expected_port: int | None = None) -> None:
     """Reject non-loopback peers and browser requests not addressed to this local origin."""
     try:
         peer = ipaddress.ip_address(str(client_address[0]))
@@ -30,6 +30,8 @@ def validate_local_request(client_address, host_header: str | None, origin_heade
         raise ValueError("Недопустимый порт Host")
     if hostname not in _ALLOWED_HOSTS or (port is not None and not 1 <= port <= 65535):
         raise ValueError("Host не относится к локальному интерфейсу")
+    if expected_port is not None and port != int(expected_port):
+        raise ValueError("Host указывает на другой порт")
 
     origin_value = str(origin_header or "").strip()
     if origin_value:
