@@ -1420,14 +1420,18 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
     }
     field_provenance = {
         field: {
-            "status": "captured",
+            "status": status,
+            "scope": "value" if status == "captured" else "attempt_context",
             "source_field": source_fields[field],
             "source_url": source_url,
             "captured_at": captured_at,
-            "method": "taxonomy" if field == "classification" else extraction_method,
+            "method": (
+                "taxonomy" if field == "classification"
+                else "applicability_policy" if status == "not_applicable"
+                else extraction_method
+            ),
         }
         for field, status in extraction_status.items()
-        if status == "captured"
     }
     meta = {
         "schema_version": 2, "policy_version": "1",
