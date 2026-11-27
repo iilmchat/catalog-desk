@@ -1,0 +1,94 @@
+{
+  "contract": "catalog-desk.s24-production-import-manifest",
+  "schema_version": 1,
+  "snapshot_date": "2026-11-27",
+  "sources": [
+    {
+      "retailer_key": "auchan",
+      "source_retailer_label": "auchan",
+      "file": "auchan_products.json",
+      "sha256": "c938237c01ae2bc881665afa058012aabec9794754cea7059195b5be71dd5a71",
+      "source_records": 81413,
+      "confirmed_products": 81413,
+      "pending_observations": 0,
+      "identity_candidates": 0,
+      "price_observations": 407065,
+      "category_observations": 238372,
+      "asset_observations": 81413
+    },
+    {
+      "retailer_key": "globus",
+      "source_retailer_label": "globus",
+      "file": "globus_products.json",
+      "sha256": "e31965ab77d8a1dfd0da0311f8d2ae2a97f70e9bb7cbec4a86c37ad57b17c266",
+      "source_records": 48158,
+      "confirmed_products": 48158,
+      "pending_observations": 0,
+      "identity_candidates": 0,
+      "price_observations": 288948,
+      "category_observations": 67453,
+      "asset_observations": 48158
+    },
+    {
+      "retailer_key": "dixy",
+      "source_retailer_label": "dixy",
+      "file": "dixy_products.json",
+      "sha256": "8295a61ee1da54ff27638dac2c0d592f1eef59a2caa8362b964af12e1d765777",
+      "source_records": 15311,
+      "confirmed_products": 8427,
+      "pending_observations": 6884,
+      "identity_candidates": 6593,
+      "price_observations": 45900,
+      "category_observations": 15278,
+      "asset_observations": 15311
+    },
+    {
+      "retailer_key": "chizhik",
+      "source_retailer_label": "chizhik",
+      "file": "chizhik_products.json",
+      "sha256": "083bcf673874b073cfeee7c97f0f5e170c8d7dae9a786f6b1424a558c8e0e711",
+      "source_records": 3231,
+      "confirmed_products": 3231,
+      "pending_observations": 0,
+      "identity_candidates": 0,
+      "price_observations": 6462,
+      "category_observations": 3657,
+      "asset_observations": 3231
+    },
+    {
+      "retailer_key": "perekrestok",
+      "source_retailer_label": "perekrestok",
+      "file": "perekrestok_products.json",
+      "sha256": "677521c71abdbfce439b641c3858195902c7b013b1a1ce1bf644ffb4cfd6c31e",
+      "source_records": 6002,
+      "confirmed_products": 6002,
+      "pending_observations": 0,
+      "identity_candidates": 0,
+      "price_observations": 8022,
+      "category_observations": 0,
+      "asset_observations": 6002
+    },
+    {
+      "retailer_key": "5ka",
+      "source_retailer_label": "pyaterochka",
+      "file": "pyaterochka_products.json",
+      "sha256": "d78233148c770f00687cf75e10daa32ea19df0157ef58f98c9fc4dc519c6d345",
+      "source_records": 5643,
+      "confirmed_products": 5643,
+      "pending_observations": 0,
+      "identity_candidates": 0,
+      "price_observations": 11286,
+      "category_observations": 0,
+      "asset_observations": 5643
+    }
+  ],
+  "totals": {
+    "source_records": 159758,
+    "confirmed_products": 152874,
+    "pending_observations": 6884,
+    "identity_candidates": 6593,
+    "price_observations": 767683,
+    "category_observations": 324760,
+    "asset_observations": 159758
+  }
+}

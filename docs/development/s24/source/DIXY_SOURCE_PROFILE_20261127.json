@@ -1,0 +1,58 @@
+{
+  "source_file": "dixy_products.json",
+  "source_path": "D:\\Temp\\catalog-desk\\dixy_products.json",
+  "source_sha256": "8295a61ee1da54ff27638dac2c0d592f1eef59a2caa8362b964af12e1d765777",
+  "source_size_bytes": 10014122,
+  "source_mtime_ns": 1795781648578531100,
+  "source_mtime_utc": "2026-11-27T12:14:08.578531+00:00",
+  "source_record_count": 15311,
+  "resolved_identity_records": 8427,
+  "pending_identity_records": 6884,
+  "invalid_identity_records": 0,
+  "identity_source_state_counts": {
+    "missing": 6884,
+    "string": 8427
+  },
+  "resolved_external_id_types": {
+    "string": 8427
+  },
+  "unique_resolved_external_ids": 8427,
+  "duplicate_resolved_external_ids": 0,
+  "url_identity_candidate_records": 6593,
+  "unique_url_identity_candidates": 6593,
+  "duplicate_url_identity_candidate_groups": 0,
+  "candidate_known_id_collisions": 0,
+  "candidate_collision_values_sample": [],
+  "candidate_source_rule": "dixy-terminal-url-id-v1",
+  "url_candidates_sample": [
+    "2000651251",
+    "2000641611",
+    "2000629252",
+    "2000626114",
+    "2000588253"
+  ],
+  "resolved_ids_sample_preserved_as_strings": [
+    "2000538475",
+    "2000546998",
+    "2000555071",
+    "2000596138",
+    "2000024202"
+  ],
+  "price_field_presence_counts": {
+    "price": 0,
+    "order_price": 0,
+    "old_price": 0,
+    "price_old": 15278,
+    "promo_price": 0,
+    "price_min": 15311,
+    "price_max": 15311,
+    "discount_percent": 0
+  },
+  "expected_price_observation_count": 45900,
+  "expected_category_observation_count": 15278,
+  "expected_asset_observation_count": 15311,
+  "image_url_classifications": {
+    "image_candidate": 10899,
+    "listing_page": 4412
+  }
+}
