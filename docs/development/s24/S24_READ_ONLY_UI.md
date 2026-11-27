@@ -35,6 +35,10 @@ The S24 workspace is a read-only view of the existing S24 schema v1. It does not
 - Image URL classification is heuristic only. Only `verified_image` represents a checked image. URLs are shown as links and never fetched by the UI.
 - Legacy `catalog_config.py`, legacy selector, importer and enrichment queues remain for Pyaterochka/Perekrestok only.
 
+## Verified smoke
+
+The local disposable-database HTTP/API smoke report is [S24_5_UI_SMOKE_20261127.md](S24_5_UI_SMOKE_20261127.md). It records 114 local tests, read-only S24 API checks, six import entries, source DB/WAL unchanged, and the remaining manual graphical-browser acceptance.
+
 ## Tests
 
 - `tests/test_s24_read_model.py`: schema-unavailable behavior, aggregate counts, filters, related observations, import metadata, raw payload and read-only connection write rejection.
