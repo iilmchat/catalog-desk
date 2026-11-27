@@ -41,6 +41,7 @@ from catalog_config import (
     validate_chain_url,
 )
 from catalog_migrations import backup_before_v15, migrate_v9_to_v10
+from s23_api_security import parse_json_object, validate_local_request
 from product_data_policy_v17 import (
     PRODUCT_CLASSES, applicability_for, calculate_completeness,
     classify_product, composition_destination, is_food_classification,
@@ -2646,12 +2647,29 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, status: int, data):
         self._send(status, safe_json(data).encode("utf-8"))
 
+    def _validate_local_request(self):
+        validate_local_request(
+            self.client_address, self.headers.get("Host"), self.headers.get("Origin")
+        )
+
     def _body_json(self):
-        n = int(self.headers.get("Content-Length", "0"))
-        if n <= 0 or n > 32 * 1024 * 1024: raise ValueError("Некорректный размер запроса")
-        return json.loads(self.rfile.read(n).decode("utf-8"))
+        raw_length = self.headers.get("Content-Length")
+        try:
+            length = int(raw_length or "")
+        except (TypeError, ValueError):
+            raise ValueError("Некорректный Content-Length")
+        if length <= 0 or length > 32 * 1024 * 1024:
+            raise ValueError("Некорректный размер запроса")
+        body = self.rfile.read(length)
+        return parse_json_object(
+            self.headers.get("Content-Type"), raw_length, body
+        )
 
     def do_GET(self):
+        try:
+            self._validate_local_request()
+        except ValueError as exc:
+            return self._json(403, {"error": str(exc)})
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
@@ -2740,9 +2758,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "Файл пока не создан"})
 
     def do_POST(self):
-        parsed = urlparse(self.path)
         try:
+            self._validate_local_request()
             data = self._body_json()
+            parsed = urlparse(self.path)
             if parsed.path == "/api/errors/retry":
                 return self._json(200, retry_error(data))
             if parsed.path == "/api/schedule":
