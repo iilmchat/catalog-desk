@@ -1385,27 +1385,62 @@ def _prepare_product_semantics(prod: dict, nutrition: dict, attrs: dict, details
     ingredients = (prod.get("ingredients") or source_composition) if classification in {"food", "pet_food"} else None
     materials = (prod.get("materials") or supplied_meta.get("materials_text") or source_composition) if classification == "non_food" else None
     unclassified = source_composition if classification == "unknown" else None
+    extraction_status = {
+        "classification": "captured" if classification != "unknown" else "not_found",
+        "name": "captured" if prod.get("name") else "not_found",
+        "price": "captured" if prod.get("current_price") is not None else "not_found",
+        "image": "captured" if prod.get("image_url") else "not_found",
+        "ingredients": "captured" if ingredients else ("not_applicable" if applicability.get("ingredients") == "not_applicable" else "not_found"),
+        "materials": "captured" if materials else ("not_applicable" if applicability.get("materials") == "not_applicable" else "not_found"),
+        "nutrition": "captured" if has_complete_nutrition(nutrition) else ("not_applicable" if applicability.get("nutrition") == "not_applicable" else "not_found"),
+        "weight": "captured" if any(attrs.get(k) for k in ("Вес", "Масса нетто", "Объем", "Объём")) else "not_found",
+        "shelf_life": "not_applicable" if applicability.get("shelf_life") == "not_applicable" else ("captured" if attrs.get("Срок хранения") or attrs.get("Срок годности") else "not_found"),
+        "brand": "captured" if attrs.get("Бренд") else "not_found",
+        "description": "captured" if prod.get("description") else "not_found",
+    }
+    source_url = prod.get("product_url") or prod.get("source_url")
+    captured_at = prod.get("captured_at") or None
+    collection_mode = str(prod.get("collection_mode") or "")
+    extraction_method = (
+        "visible_dom" if "visible-current-page-dom-only" in collection_mode
+        else "payload"
+    )
+    source_fields = {
+        "classification": "category_path",
+        "name": "name",
+        "price": "current_price",
+        "image": "image_url",
+        "ingredients": "composition",
+        "materials": "materials",
+        "nutrition": "nutrition",
+        "weight": "attributes",
+        "shelf_life": "attributes",
+        "brand": "attributes",
+        "description": "description",
+    }
+    field_provenance = {
+        field: {
+            "status": "captured",
+            "source_field": source_fields[field],
+            "source_url": source_url,
+            "captured_at": captured_at,
+            "method": "taxonomy" if field == "classification" else extraction_method,
+        }
+        for field, status in extraction_status.items()
+        if status == "captured"
+    }
     meta = {
-        "schema_version": 1, "policy_version": "1",
+        "schema_version": 2, "policy_version": "1",
         "product_class": classification, "classification_basis": basis,
         "classification_confidence": confidence, "category_path": taxonomy,
         "field_applicability": applicability,
         "materials_text": materials, "unclassified_composition_text": unclassified,
         "composition_kind": destination,
-        "extraction_status": {
-            "classification": "captured" if classification != "unknown" else "not_found",
-            "name": "captured" if prod.get("name") else "not_found",
-            "price": "captured" if prod.get("current_price") is not None else "not_found",
-            "image": "captured" if prod.get("image_url") else "not_found",
-            "ingredients": "captured" if ingredients else ("not_applicable" if applicability.get("ingredients") == "not_applicable" else "not_found"),
-            "materials": "captured" if materials else ("not_applicable" if applicability.get("materials") == "not_applicable" else "not_found"),
-            "nutrition": "captured" if has_complete_nutrition(nutrition) else ("not_applicable" if applicability.get("nutrition") == "not_applicable" else "not_found"),
-            "weight": "captured" if any(attrs.get(k) for k in ("Вес", "Масса нетто", "Объем", "Объём")) else "not_found",
-            "shelf_life": "not_applicable" if applicability.get("shelf_life") == "not_applicable" else ("captured" if attrs.get("Срок хранения") or attrs.get("Срок годности") else "not_found"),
-            "brand": "captured" if attrs.get("Бренд") else "not_found",
-            "description": "captured" if prod.get("description") else "not_found",
+        "extraction_status": extraction_status,
+        "provenance": {
+            "source_url": source_url, "captured_at": captured_at,
+            "fields": field_provenance,
         },
-        "provenance": {"source_url": prod.get("product_url"), "captured_at": prod.get("captured_at") or None},
     }
     attrs["_catalog_meta"] = meta
     return ingredients, materials, attrs, meta
