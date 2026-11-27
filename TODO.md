@@ -1,12 +1,33 @@
 # TODO — Catalog Desk V17 и дальнейшее развитие
 
 **Историческая база миграции:** V14.0 (одна сеть, `SAP 35XY`).
-**Текущая база:** V16.1.0 выпущен, V17 объединён в `main` (PR #8, 2026-11-26). **Ближайшая цель:** S23 — надёжность DOM-сбора, тестирование и качество данных.
+**Текущая база:** V17 и S23 объединены в `main` (PR #8 и PR #11). **Текущая ветка:** S24.5 — six-retailer import/storage + отдельный read-only UI; PR готовится к CI и приёмке.
 **Источник проблем:** [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 **Разбивка по спринтам:** [docs/TODO_SPRINTS.md](docs/TODO_SPRINTS.md).
 
 > Правило: каждый шаг — отдельный коммит, тесты зелёные, CHANGELOG обновлён
 > в том же коммите. Перед миграцией БД — копия файла базы.
+
+## S24.5 — multi-retailer catalog observations (feature branch)
+
+- [x] Разработана S24 schema v1 и storage adapter с раздельными identity, observations, ценовыми полями, категориями и asset observations.
+- [x] Добавлены шесть адаптеров и guarded production runner; 100 package tests пройдены до переноса.
+- [x] Пакет перенесён в feature branch `feat/s24-5-readonly-catalog-ui`, commit `508a447`; после переноса пользователь подтвердил 108 локальных Python-тестов.
+- [x] Production import шести зафиксированных source snapshots подтверждён отдельным отчётом; повторный импорт — no-op.
+- [x] Добавлен read-only query model с SQLite `mode=ro` и `query_only=ON`.
+- [x] Добавлены GET API routes и UI workspace «S24 · Каталоги», независимый от legacy switch.
+- [ ] Прогнать CI и полный browser smoke на disposable DB; подтвердить соответствие реальному UI API.
+- [ ] Сверить итоговую документацию/CHANGELOG с CI и ручным smoke.
+
+**Границы снимков:** S24.5 покрывает шесть зафиксированных каталогов. Magnit, Verny и Tvoydom не импортированы. Новый Pyaterochka source (7 134 rows) отличается от импортированного baseline (5 643 rows) и требует отдельного review. `dixy_details.json` — отдельный detail stream, не седьмой каталог.
+
+## S24.6 — расширение набора источников
+
+- [ ] Магнит: подтвердить область store context для `store_code=992301`, отдельно описать price/category/media semantics.
+- [ ] Верный: сохранять UUID `product_id` отдельно от уникального `item_code`.
+- [ ] Твой Дом: использовать подтверждённый соответствием URL `code` как external identity; `product_id` сохранять как отдельное исходное поле.
+- [ ] `dixy_details.json`: detail enrichment stream; join по совпадающему product ID (700/700 IDs есть в каталоге; rich fields присутствуют в 134/134 ID), не второй catalog source.
+- [ ] Перед добавлением сетей — coordinated schema/adapter/profile/import/API/UI/test plan. Не расширять legacy `catalog_config.py`.
 
 ## V17 — модель качества смешанного каталога (в `main`, PR #8 merged 2026-11-26)
 
