@@ -16,7 +16,8 @@
 - [x] Production import шести зафиксированных source snapshots подтверждён отдельным отчётом; повторный импорт — no-op.
 - [x] Добавлен read-only query model с SQLite `mode=ro` и `query_only=ON`.
 - [x] Добавлены GET API routes и UI workspace «S24 · Каталоги», независимый от legacy switch.
-- [ ] Прогнать CI и полный browser smoke на disposable DB; подтвердить соответствие реальному UI API.
+- [x] GitHub Actions CI (#183) зелёный; локальный smoke на disposable DB подтвердил все 4 S24 GET API, static assets HTTP 200, POST guard 404 и неизменность production DB/WAL. Отчёт: [S24_5_UI_SMOKE_20261127.md](docs/development/s24/S24_5_UI_SMOKE_20261127.md).
+- [ ] Ручная визуальная приёмка нового S24 workspace в графическом браузере: навигация, таблицы, фильтры, пагинация, observation detail.
 - [ ] Сверить итоговую документацию/CHANGELOG с CI и ручным smoke.
 
 **Границы снимков:** S24.5 покрывает шесть зафиксированных каталогов. Magnit, Verny и Tvoydom не импортированы. Новый Pyaterochka source (7 134 rows) отличается от импортированного baseline (5 643 rows) и требует отдельного review. `dixy_details.json` — отдельный detail stream, не седьмой каталог.
