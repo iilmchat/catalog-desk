@@ -105,8 +105,10 @@ class FieldProvenanceTests(unittest.TestCase):
         self.assertEqual(meta["extraction_status"]["nutrition"], "not_applicable")
         self.assertEqual(meta["extraction_status"]["ingredients"], "not_applicable")
         self.assertEqual(meta["extraction_status"]["image"], "not_found")
-        self.assertNotIn("nutrition", meta["provenance"]["fields"])
-        self.assertNotIn("image", meta["provenance"]["fields"])
+        self.assertEqual(meta["provenance"]["fields"]["nutrition"]["status"], "not_applicable")
+        self.assertEqual(meta["provenance"]["fields"]["nutrition"]["method"], "applicability_policy")
+        self.assertEqual(meta["provenance"]["fields"]["image"]["status"], "not_found")
+        self.assertEqual(meta["provenance"]["fields"]["image"]["scope"], "attempt_context")
 
     def test_legacy_metadata_shape_remains_readable(self):
         legacy = {
