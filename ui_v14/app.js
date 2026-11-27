@@ -3,22 +3,22 @@
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => Array.from(root.querySelectorAll(s));
 const state = { view:'dashboard', page:1, productPages:1, productTotal:0, toastTimer:null, polling:false,
-  chain:localStorage.getItem('catalog_chain')||'5ka', stores:[] };
-const headings = {dashboard:'Обзор',products:'Каталог товаров',search:'Поиск по составу',enrichment:'Массовое обогащение',analytics:'Аналитика',changes:'Изменения цен',favorites:'Избранное',collection:'Сбор и импорты'};
+  chain:localStorage.getItem('catalog_chain')||'5ka', stores:[], s24Page:1, s24PageSize:25, s24Total:0 };
+const headings = {dashboard:'Обзор',products:'Каталог товаров',search:'Поиск по составу',enrichment:'Массовое обогащение',analytics:'Аналитика',changes:'Изменения цен',favorites:'Избранное',collection:'Сбор и импорты',s24:'S24 — каталоги наблюдений'};
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function money(v){if(v===null||v===undefined||v==='')return '—';return new Intl.NumberFormat('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v))+' ₽';}
 function num(v){return new Intl.NumberFormat('ru-RU').format(Number(v||0));}
 function date(v,time=true){if(!v)return '—';const d=new Date(v);if(Number.isNaN(d.getTime()))return String(v).replace('T',' ').slice(0,19);return d.toLocaleString('ru-RU',time?{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}:{day:'2-digit',month:'2-digit',year:'numeric'});}
 function safeUrl(v){try{const u=new URL(v,location.origin);return ['http:','https:'].includes(u.protocol)?u.href:'';}catch(_){return '';}}
 function toast(msg){const e=$('#toast');e.textContent=msg;e.classList.add('show');clearTimeout(state.toastTimer);state.toastTimer=setTimeout(()=>e.classList.remove('show'),3000);}
-function withChain(path){if(!path.startsWith('/api/')||path.startsWith('/api/stores')||path.startsWith('/api/job'))return path;return path+(path.includes('?')?'&':'?')+'chain='+encodeURIComponent(state.chain);}
+function withChain(path){if(!path.startsWith('/api/')||path.startsWith('/api/stores')||path.startsWith('/api/job')||path.startsWith('/api/s24/'))return path;return path+(path.includes('?')?'&':'?')+'chain='+encodeURIComponent(state.chain);}
 async function api(path,options={}){const r=await fetch(withChain(path),options);const ct=r.headers.get('content-type')||'';const d=ct.includes('application/json')?await r.json():await r.text();if(!r.ok)throw new Error(d?.error||d||`HTTP ${r.status}`);return d;}
 function post(path,body){const payload={...(body||{})};if(payload.chain===undefined)payload.chain=state.chain;return api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});}
 
 function storeTitle(chain){return state.stores.find(s=>s.chain===chain)?.title||chain;}
 function applyStoreLabels(){const s=state.stores.find(x=>x.chain===state.chain)||{title:'Пятёрочка',sap_codes:['35XY'],chain:'5ka'};const bt=$('#brand-title'),crumb=$('#crumb-store'),foot=$('#footer-store'),mark=$('#brand-mark'),sap=$('#store-sap');if(bt)bt.textContent=s.title;if(crumb)crumb.textContent=s.title;if(foot)foot.textContent=`${s.title} · SAP ${s.sap_codes[0]||'—'}`;if(mark)mark.textContent=s.chain==='5ka'?'5':'П';if(sap)sap.textContent='SAP '+(s.sap_codes[0]||'—');document.title=`${s.title} — Catalog Desk V16.1.0`;}
 async function initStoreSwitch(){try{state.stores=await api('/api/stores');const sel=$('#store-chain');if(sel){sel.innerHTML=state.stores.map(s=>`<option value="${esc(s.chain)}">${esc(s.title)}</option>`).join('');if(!state.stores.some(s=>s.chain===state.chain))state.chain='5ka';sel.value=state.chain;sel.addEventListener('change',()=>{state.chain=sel.value;localStorage.setItem('catalog_chain',state.chain);applyStoreLabels();setView(state.view);});}applyStoreLabels();}catch(err){applyStoreLabels();}}
-function setView(v){if(!Object.prototype.hasOwnProperty.call(headings,v))return;state.view=v;$$('.view').forEach(e=>{const active=e.id===`view-${v}`;e.classList.toggle('active',active);e.hidden=!active;});$$('.nav-link').forEach(e=>{const active=e.dataset.view===v;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});$('#page-heading').textContent=headings[v];$('#sidebar').classList.remove('open');if(v==='dashboard')loadDashboard();if(v==='products')loadProducts();if(v==='search')loadSearch();if(v==='enrichment')loadMassEnrichment(true);if(v==='analytics')loadAnalytics();if(v==='changes')loadChanges();if(v==='favorites')loadFavorites();if(v==='collection')loadCollection();}
+function setView(v){if(!Object.prototype.hasOwnProperty.call(headings,v))return;state.view=v;$$('.view').forEach(e=>{const active=e.id===`view-${v}`;e.classList.toggle('active',active);e.hidden=!active;});$$('.nav-link').forEach(e=>{const active=e.dataset.view===v;e.classList.toggle('active',active);if(active)e.setAttribute('aria-current','page');else e.removeAttribute('aria-current');});$('#page-heading').textContent=headings[v];$('#sidebar').classList.remove('open');if(v==='dashboard')loadDashboard();if(v==='products')loadProducts();if(v==='search')loadSearch();if(v==='enrichment')loadMassEnrichment(true);if(v==='analytics')loadAnalytics();if(v==='changes')loadChanges();if(v==='favorites')loadFavorites();if(v==='collection')loadCollection();if(v==='s24')loadS24();}
 function showDbError(err,nodeId='category-bars'){toast(err.message||'Ошибка доступа к базе');const n=$('#'+nodeId);if(n)n.innerHTML=`<div class="empty-inline">${esc(err.message)}</div>`;}
 
 async function loadDashboard(){
@@ -235,7 +235,7 @@ async function openProduct(sap,plu){$('#product-modal').hidden=false;$('#product
  }catch(err){$('#product-detail').innerHTML=`<div class="empty-cell">${esc(err.message)}</div>`;}}
 function drawHistoryChart(points){if(!points.length)return '<div class="no-details">Пока нет наблюдений цены.</div>';const W=780,H=205,L=54,R=20,T=20,B=34;if(points.length===1)return `<svg viewBox="0 0 ${W} ${H}" class="history-svg"><text x="${W/2}" y="96" text-anchor="middle" fill="#829184" font-size="13">Один снимок: ${money(points[0].current_price)}</text><circle cx="${W/2}" cy="115" r="5" fill="#4e8c54"/></svg>`;const vals=points.map(x=>Number(x.current_price)),min=Math.min(...vals),max=Math.max(...vals),span=max-min||1;const x=i=>L+i*(W-L-R)/(points.length-1),y=v=>T+(max-v)*(H-T-B)/span;const path=points.map((p,i)=>`${i?'L':'M'}${x(i)},${y(Number(p.current_price))}`).join(' ');return `<svg viewBox="0 0 ${W} ${H}" class="history-svg"><line x1="${L}" y1="${T}" x2="${W-R}" y2="${T}" stroke="#e9eee8"/><line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="#e9eee8"/><text x="${L-8}" y="${T+4}" text-anchor="end" fill="#8b998e" font-size="10">${max.toFixed(2)}</text><text x="${L-8}" y="${H-B+4}" text-anchor="end" fill="#8b998e" font-size="10">${min.toFixed(2)}</text><path d="${path}" fill="none" stroke="#4d8b52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${points.map((p,i)=>`<circle cx="${x(i)}" cy="${y(Number(p.current_price))}" r="4" fill="#fff" stroke="#4d8b52" stroke-width="2"><title>${date(p.captured_at)} · ${money(p.current_price)}</title></circle>`).join('')}<text x="${L}" y="${H-8}" fill="#8b998e" font-size="10">${date(points[0].captured_at,false)}</text><text x="${W-R}" y="${H-8}" text-anchor="end" fill="#8b998e" font-size="10">${date(points.at(-1).captured_at,false)}</text></svg>`;}
 $('#modal-close').addEventListener('click',()=>$('#product-modal').hidden=true);$('#product-modal').addEventListener('click',e=>{if(e.target===$('#product-modal'))$('#product-modal').hidden=true;});document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#product-modal').hidden=true;});
-document.addEventListener('click',e=>{const nav=e.target.closest('[data-view]');if(nav){e.preventDefault();setView(nav.dataset.view);return;}const goto=e.target.closest('[data-goto]');if(goto){e.preventDefault();setView(goto.dataset.goto);}});$('#refresh-button').addEventListener('click',()=>{const fn={dashboard:loadDashboard,products:loadProducts,search:loadSearch,analytics:loadAnalytics,changes:loadChanges,favorites:loadFavorites,collection:loadCollection}[state.view];fn?.();toast('Данные обновляются…');});$('#mobile-menu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{const nav=e.target.closest('[data-view]');if(nav){e.preventDefault();setView(nav.dataset.view);return;}const goto=e.target.closest('[data-goto]');if(goto){e.preventDefault();setView(goto.dataset.goto);}});$('#refresh-button').addEventListener('click',()=>{const fn={dashboard:loadDashboard,products:loadProducts,search:loadSearch,analytics:loadAnalytics,changes:loadChanges,favorites:loadFavorites,collection:loadCollection,s24:loadS24}[state.view];fn?.();toast('Данные обновляются…');});$('#mobile-menu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
 
 async function loadSearch(){const q=$('#search-query')?.value||'';try{const d=await api('/api/search?q='+encodeURIComponent(q));$('#search-body').innerHTML=d.items.length?d.items.map(p=>`<tr><td><div class="product-title">${esc(p.name||'')}</div><div class="product-sub">PLU ${esc(p.plu)}</div></td><td>${esc(storeTitle(p.chain))}</td><td class="price-strong">${money(p.current_price)}</td><td>${esc(p.nutrition?.Белки||'—')}</td><td>${esc(p.nutrition?.Жиры||'—')}</td><td>${p.quality?.percent??'—'}%</td><td>${esc((p.composition||'').slice(0,110))}</td></tr>`).join(''):'<tr><td colspan="7" class="empty-cell">Ничего не найдено. Проверьте формулировку условия.</td></tr>';}catch(err){$('#search-body').innerHTML=`<tr><td colspan="7" class="empty-cell">${esc(err.message)}</td></tr>`;}}
 $('#search-run')?.addEventListener('click',loadSearch);
@@ -250,6 +250,141 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-erro
 async function runCompare(){const plu=($('#compare-plu')?.value||'').trim();if(!plu){toast('Введите PLU');return;}try{const d=await api('/api/compare?plu='+encodeURIComponent(plu));const rows=d.items||[];$('#compare-result').innerHTML=rows.length?rows.map(r=>`<div class="compare-row"><strong>${esc(storeTitle(r.chain))}</strong><span>SAP ${esc(r.sap_code)}</span><span class="compare-price">${money(r.current_price)}</span><span>${r.discount_pct!==null&&r.discount_pct!==undefined?`−${Number(r.discount_pct)}%`:'—'}</span></div>`).join(''):`<div class="empty-inline">PLU ${esc(plu)} не найден ни в одной сети.</div>`;}catch(err){toast(err.message);}}
 $('#compare-run')?.addEventListener('click',runCompare);
 $('#compare-plu')?.addEventListener('keydown',e=>{if(e.key==='Enter')runCompare();});
+
+
+function s24Value(value){
+  if(value===null||value===undefined)return '—';
+  if(typeof value==='object')return JSON.stringify(value);
+  return String(value);
+}
+function s24Status(value){
+  const labels={resolved:'Resolved',pending:'Pending',invalid:'Invalid',committed:'Committed',failed:'Failed',staged:'Staged',unverified:'Unverified',verified_image:'Verified image',verified_not_image:'Not an image',collision:'Collision'};
+  const cls=['resolved','committed','verified_image'].includes(value)?'done':(['pending','unverified','collision','staged'].includes(value)?'pending':'');
+  return '<span class="status-chip '+cls+'">'+esc(labels[value]||value||'—')+'</span>';
+}
+function s24PriceSummary(fields){
+  return fields?.length?fields.map(f=>'<div><b>'+esc(f.field_name)+'</b>: '+esc(s24Value(f.raw_value))+'</div>').join(''):'—';
+}
+function s24CategorySummary(items){
+  return items?.length?items.map(c=>esc(c.label_text||s24Value(c.raw_label))).join(' / '):'—';
+}
+function s24AssetSummary(items){
+  return items?.length?items.map(a=>esc(a.url_classification)+' · '+esc(a.verification_status)).join('<br>'):'—';
+}
+async function loadS24(){
+  const tbody=$('#s24-observations-body');
+  if(tbody)tbody.innerHTML='<tr><td colspan="9" class="empty-cell">Загружаем S24…</td></tr>';
+  try{
+    const params=new URLSearchParams({
+      retailer:$('#s24-retailer-filter')?.value||'all',
+      identity_status:$('#s24-identity-filter')?.value||'all',
+      q:$('#s24-query')?.value||'',
+      page:String(state.s24Page),
+      page_size:String(state.s24PageSize)
+    });
+    const result=await Promise.all([
+      api('/api/s24/summary'),
+      api('/api/s24/products?'+params.toString()),
+      api('/api/s24/imports?limit=50')
+    ]);
+    const summary=result[0], listing=result[1], imports=result[2];
+    if(!summary.available){
+      $('#s24-stat-grid').innerHTML='<div class="info-strip"><span>ⓘ</span><div>'+esc(summary.reason||'Схема S24 недоступна.')+'</div></div>';
+      $('#s24-retailers-body').innerHTML='<tr><td colspan="9" class="empty-cell">'+esc(summary.reason||'S24 не установлен')+'</td></tr>';
+      $('#s24-observations-body').innerHTML='<tr><td colspan="9" class="empty-cell">Нет доступной схемы S24.</td></tr>';
+      $('#s24-imports-body').innerHTML='<tr><td colspan="7" class="empty-cell">Нет импортов S24.</td></tr>';
+      $('#s24-observations-total').textContent='0 наблюдений';
+      return;
+    }
+    const t=summary.totals||{};
+    const cards=[
+      [num(t.confirmed_products),'ПОДТВЕРЖДЁННЫЕ ТОВАРЫ','Уникальные ID внутри сети'],
+      [num(t.observations),'НАБЛЮДЕНИЯ','Исходные записи'],
+      [num(t.pending_observations),'PENDING ID','Не объединены с товарами'],
+      [num(t.identity_candidates),'КАНДИДАТЫ ID','Не подтверждены'],
+      [num(t.price_observations),'ЦЕНОВЫЕ ПОЛЯ','Исходные поля без семантики'],
+      [num(t.verified_assets)+' / '+num(t.asset_observations),'ПРОВЕРЕНО / ASSETS','Ссылки не считаются фото']
+    ];
+    $('#s24-stat-grid').innerHTML=cards.map((c,i)=>'<div class="stat-card '+(i===0?'stat-primary':'')+'"><div class="stat-label">'+c[1]+'</div><div class="stat-value">'+c[0]+'</div><div class="stat-foot">'+c[2]+'</div></div>').join('');
+    const retailers=summary.retailers||[];
+    $('#s24-retailers-body').innerHTML=retailers.map(x=>'<tr><td><strong>'+esc(x.title)+'</strong><div class="product-sub">'+esc(x.retailer_key)+'</div></td><td>'+num(x.committed_imports)+' / '+num(x.import_count)+'</td><td>'+num(x.confirmed_products)+'</td><td>'+num(x.observations)+'</td><td>'+num(x.resolved_observations)+'</td><td>'+num(x.pending_observations)+'</td><td>'+num(x.price_observations)+'</td><td>'+num(x.verified_assets)+' / '+num(x.asset_observations)+'</td><td>'+num(x.identity_candidates)+'</td></tr>').join('');
+    const importItems=imports.items||[];
+    $('#s24-import-count').textContent=importItems.length+' записей';
+    $('#s24-imports-body').innerHTML=importItems.length?importItems.map(x=>{
+      const retailer=retailers.find(r=>r.retailer_key===x.retailer_key);
+      return '<tr><td>'+esc(retailer?.title||x.retailer_key)+'</td><td>'+esc(x.source_file_name)+'</td><td><code>'+esc(String(x.source_sha256||'').slice(0,16))+'…</code></td><td>'+num(x.source_record_count)+'</td><td>'+num(x.committed_record_count)+'</td><td>'+s24Status(x.import_status)+'</td><td>'+date(x.imported_at_utc)+'</td></tr>';
+    }).join(''):'<tr><td colspan="7" class="empty-cell">Импортов пока нет.</td></tr>';
+    renderS24Observations(listing);
+  }catch(err){
+    if(tbody)tbody.innerHTML='<tr><td colspan="9" class="empty-cell">'+esc(err.message||'Ошибка загрузки S24')+'</td></tr>';
+    toast(err.message||'Ошибка загрузки S24');
+  }
+}
+function renderS24Observations(data){
+  const items=data.items||[];
+  state.s24Total=Number(data.total||0);
+  $('#s24-observations-total').textContent=num(state.s24Total)+' наблюдений';
+  $('#s24-page-info').textContent='Страница '+(data.page||1)+' из '+Math.max(1,data.pages||1);
+  $('#s24-prev-page').disabled=(data.page||1)<=1;
+  $('#s24-next-page').disabled=(data.page||1)>=(data.pages||1);
+  $('#s24-observations-body').innerHTML=items.length?items.map(x=>{
+    return '<tr><td><code>#'+num(x.observation_id)+'</code><div class="product-sub">'+esc(x.source_file_name||'')+'</div></td>'+
+      '<td>'+esc(x.retailer_key)+'</td>'+
+      '<td><strong>'+esc(x.product_name||'Без названия')+'</strong><div class="product-sub">'+esc(x.brand||'')+'</div></td>'+
+      '<td><code>'+esc(x.source_external_product_id||'—')+'</code></td>'+
+      '<td>'+s24Status(x.identity_status)+'</td>'+
+      '<td class="s24-raw-cell">'+s24PriceSummary(x.price_fields)+'</td>'+
+      '<td>'+s24CategorySummary(x.categories)+'</td>'+
+      '<td>'+s24AssetSummary(x.assets)+'</td>'+
+      '<td><button class="outline-button small" data-s24-open="'+Number(x.observation_id)+'">Открыть</button></td></tr>';
+  }).join(''):'<tr><td colspan="9" class="empty-cell">По заданным фильтрам наблюдений нет.</td></tr>';
+}
+async function openS24Observation(id){
+  const panel=$('#s24-observation-detail');
+  $('#s24-detail-title').textContent='Наблюдение #'+id;
+  $('#s24-detail-content').innerHTML='<div class="empty-inline">Загружаем исходную запись…</div>';
+  panel.hidden=false;
+  try{
+    const d=await api('/api/s24/observations/'+encodeURIComponent(id));
+    const rawUrl=safeUrl(d.product_url), imageUrl=safeUrl(d.image_url);
+    const priceRows=(d.price_fields||[]).map(p=>'<tr><td>'+esc(p.field_name)+'</td><td>'+esc(s24Value(p.raw_value))+'</td><td>'+esc(p.value_state)+'</td><td>'+esc(p.semantic_role)+'</td><td>'+esc(p.currency_status)+'</td></tr>').join('');
+    const categoryRows=(d.categories||[]).map(c=>'<tr><td>'+esc(c.source_field)+'</td><td>'+num(c.path_position)+'</td><td>'+esc(c.label_text||s24Value(c.raw_label))+'</td></tr>').join('');
+    const assetRows=(d.assets||[]).map(a=>{
+      const url=safeUrl(a.asset_url);
+      return '<tr><td>'+esc(a.source_field)+'</td><td>'+esc(a.url_classification)+'</td><td>'+esc(a.verification_status)+'</td><td>'+(url?'<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Открыть URL</a>':'—')+'</td></tr>';
+    }).join('');
+    const candidateRows=(d.identity_candidates||[]).map(c=>'<tr><td>'+esc(c.candidate_value)+'</td><td>'+esc(c.candidate_source)+'</td><td>'+s24Status(c.candidate_status)+'</td></tr>').join('');
+    const links=(rawUrl?'<a href="'+esc(rawUrl)+'" target="_blank" rel="noopener noreferrer">Страница товара ↗</a>':'<span>Ссылка на товар отсутствует</span>')+
+      (imageUrl?'<a href="'+esc(imageUrl)+'" target="_blank" rel="noopener noreferrer">URL изображения ↗</a>':'<span>URL изображения отсутствует</span>');
+    $('#s24-detail-content').innerHTML=
+      '<div class="s24-detail-grid">'+
+      '<div><small>СЕТЬ</small><strong>'+esc(d.retailer_key)+'</strong></div>'+
+      '<div><small>ИДЕНТИЧНОСТЬ</small>'+s24Status(d.identity_status)+'</div>'+
+      '<div><small>ВНЕШНИЙ ID</small><code>'+esc(d.source_external_product_id||'—')+'</code></div>'+
+      '<div><small>CATALOG PRODUCT ID</small><code>'+esc(d.catalog_product_id??'—')+'</code></div>'+
+      '<div><small>ИМПОРТ</small><span>'+esc(d.source_file_name||'—')+'</span></div>'+
+      '<div><small>НАБЛЮДЕНИЕ</small><span>'+date(d.scraped_at_raw||d.created_at_utc)+'</span></div></div>'+
+      '<div class="s24-link-row">'+links+'</div>'+
+      '<h3>Исходные ценовые поля</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>FIELD</th><th>RAW VALUE</th><th>STATE</th><th>SEMANTIC ROLE</th><th>CURRENCY</th></tr></thead><tbody>'+(priceRows||'<tr><td colspan="5">Нет ценовых полей</td></tr>')+'</tbody></table></div>'+
+      '<h3>Категории</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>FIELD</th><th>POSITION</th><th>RAW LABEL</th></tr></thead><tbody>'+(categoryRows||'<tr><td colspan="3">Нет категорийных наблюдений</td></tr>')+'</tbody></table></div>'+
+      '<h3>Активы</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>FIELD</th><th>CLASSIFICATION</th><th>VERIFICATION</th><th>URL</th></tr></thead><tbody>'+(assetRows||'<tr><td colspan="4">Нет asset observations</td></tr>')+'</tbody></table></div>'+
+      '<h3>Кандидаты идентичности</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>CANDIDATE</th><th>SOURCE RULE</th><th>STATUS</th></tr></thead><tbody>'+(candidateRows||'<tr><td colspan="3">Кандидатов нет</td></tr>')+'</tbody></table></div>'+
+      '<h3>Raw JSON source record</h3><pre class="s24-raw-json">'+esc(JSON.stringify(d.raw_record,null,2)||'null')+'</pre>';
+    panel.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(err){$('#s24-detail-content').innerHTML='<div class="empty-inline">'+esc(err.message)+'</div>';}
+}
+$('#s24-refresh')?.addEventListener('click',()=>{state.s24Page=1;loadS24();});
+$('#s24-search-button')?.addEventListener('click',()=>{state.s24Page=1;loadS24();});
+$('#s24-query')?.addEventListener('keydown',e=>{if(e.key==='Enter'){state.s24Page=1;loadS24();}});
+$('#s24-retailer-filter')?.addEventListener('change',()=>{state.s24Page=1;loadS24();});
+$('#s24-identity-filter')?.addEventListener('change',()=>{state.s24Page=1;loadS24();});
+$('#s24-prev-page')?.addEventListener('click',()=>{if(state.s24Page>1){state.s24Page--;loadS24();}});
+$('#s24-next-page')?.addEventListener('click',()=>{state.s24Page++;loadS24();});
+$('#s24-detail-close')?.addEventListener('click',()=>{$('#s24-observation-detail').hidden=true;});
+document.addEventListener('click',e=>{
+  const open=e.target.closest('[data-s24-open]');
+  if(open)openS24Observation(open.dataset.s24Open);
+});
 
 initStoreSwitch().finally(()=>setView('dashboard'));
 
