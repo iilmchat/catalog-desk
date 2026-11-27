@@ -34,6 +34,13 @@ class LocalApiRequestValidationTests(unittest.TestCase):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 validate_local_request(*args)
 
+    def test_rejects_host_on_another_local_port(self):
+        with self.assertRaisesRegex(ValueError, "другой порт"):
+            validate_local_request(
+                ("127.0.0.1", 51000), "localhost:8768", None,
+                expected_port=8767,
+            )
+
     def test_rejects_malformed_host_and_origin(self):
         for host in ("", "127.0.0.1/path", "user@127.0.0.1", "127.0.0.1:99999"):
             with self.subTest(host=host), self.assertRaises(ValueError):
