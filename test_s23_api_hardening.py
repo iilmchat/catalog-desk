@@ -111,6 +111,21 @@ class FieldProvenanceTests(unittest.TestCase):
         self.assertEqual(meta["provenance"]["fields"]["image"]["status"], "not_found")
         self.assertEqual(meta["provenance"]["fields"]["image"]["scope"], "attempt_context")
 
+    def test_recovered_description_provenance_points_to_details_text(self):
+        prod = {
+            "name": "Товар",
+            "product_url": "https://5ka.ru/product/item--123456/",
+            "category_path": "Новогодние товары",
+        }
+        _, _, _, meta = mod._prepare_product_semantics(
+            prod, {}, {}, "Описание Очень подробное описание товара для проверки provenance."
+        )
+        self.assertEqual(meta["extraction_status"]["description"], "captured")
+        self.assertEqual(
+            meta["provenance"]["fields"]["description"]["source_field"],
+            "description_or_details_text",
+        )
+
     def test_legacy_metadata_shape_remains_readable(self):
         legacy = {
             "schema_version": 1,
