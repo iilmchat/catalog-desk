@@ -5,6 +5,7 @@
 ### Added
 - Полевая provenance в `attributes_json._catalog_meta` (schema v2): для каждого реально captured-поля фиксируются логический источник, URL, время снимка и метод извлечения. Legacy `schema_version=1` сохраняется для чтения; SQLite migration и массовое переписывание не выполняются.
 - Изолированный модуль `s23_api_security.py` и unit tests для loopback peer, Host/Origin, типа содержимого, размера, UTF-8 и JSON object.
+- Тесты refresh token: повторный read-only claim, TTL expiration, параллельный record guard и consume после успешной записи.
 
 ### Fixed
 - Локальный HTTP handler отклоняет запросы не с loopback, неподходящий Host/Origin и некорректные или чрезмерные JSON POST bodies. Разрешены локальный UI и retailer origins, используемые userscripts.
