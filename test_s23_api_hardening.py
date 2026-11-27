@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import json
+import threading
 import unittest
 
 from s23_api_security import parse_json_object, validate_local_request
-from test_server_multi_store_v15 import mod
+from test_server_multi_store_v15 import MultiStoreBatchTests, mod
 
 
 class LocalApiRequestValidationTests(unittest.TestCase):
@@ -118,6 +119,85 @@ class FieldProvenanceTests(unittest.TestCase):
         self.assertEqual(legacy["provenance"]["source_url"], "https://5ka.ru/product/x")
         # S23 adds a nested fields map without requiring a database schema change.
         self.assertNotIn("fields", legacy["provenance"])
+
+
+
+class SingleRefreshTokenHardeningTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = MultiStoreBatchTests()
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.tearDown)
+
+    def _request(self):
+        return mod.create_detail_refresh_request({
+            "chain": "perekrestok", "sap_code": "XSEO", "plu": "100001"
+        })
+
+    def test_claim_is_read_only_but_successful_record_consumes_token(self):
+        created = self._request()
+        first = mod.claim_detail_refresh({"token": [created["token"]]})
+        second = mod.claim_detail_refresh({"token": [created["token"]]})
+        self.assertEqual(first, second)
+        payload = self.fixture._payload()
+        payload["product"]["category_path"] = "Молочные продукты"
+        result = mod.record_single_detail_refresh({
+            "token": created["token"], "payload": payload
+        })
+        self.assertTrue(result["accepted"])
+        with self.assertRaises(ValueError):
+            mod.claim_detail_refresh({"token": [created["token"]]})
+
+    def test_expired_token_is_rejected_and_removed(self):
+        original_ttl = mod._DETAIL_REFRESH_TTL_SECONDS
+        try:
+            mod._DETAIL_REFRESH_TTL_SECONDS = 0
+            created = self._request()
+        finally:
+            mod._DETAIL_REFRESH_TTL_SECONDS = original_ttl
+        with self.assertRaisesRegex(ValueError, "истёк"):
+            mod.claim_detail_refresh({"token": [created["token"]]})
+        self.assertNotIn(created["token"], mod._DETAIL_REFRESH_REQUESTS)
+
+    def test_concurrent_record_attempt_is_rejected_while_first_is_in_flight(self):
+        created = self._request()
+        payload = self.fixture._payload()
+        entered = threading.Event()
+        release = threading.Event()
+        outcome = {}
+        original_import = mod.import_single_detail_snapshot
+
+        def slow_import(_payload, _expected):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError("test synchronization timeout")
+            return {"accepted": True, "queue_changed": False}
+
+        def first_attempt():
+            try:
+                outcome["first"] = mod.record_single_detail_refresh({
+                    "token": created["token"], "payload": payload
+                })
+            except Exception as exc:
+                outcome["first_error"] = exc
+
+        try:
+            mod.import_single_detail_snapshot = slow_import
+            worker = threading.Thread(target=first_attempt)
+            worker.start()
+            self.assertTrue(entered.wait(2), "first record did not enter importer")
+            with self.assertRaisesRegex(ValueError, "обрабатывается"):
+                mod.record_single_detail_refresh({
+                    "token": created["token"], "payload": payload
+                })
+            release.set()
+            worker.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertNotIn("first_error", outcome)
+            self.assertTrue(outcome["first"]["accepted"])
+            self.assertNotIn(created["token"], mod._DETAIL_REFRESH_REQUESTS)
+        finally:
+            release.set()
+            mod.import_single_detail_snapshot = original_import
 
 
 if __name__ == "__main__":
