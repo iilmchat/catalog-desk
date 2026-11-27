@@ -35,6 +35,7 @@ docs/
     ├── RELEASES.md              ← процесс релиза
     ├── adr/                     ← архитектурные решения (CD-ADR-001…006)
     ├── reports/                 ← отчёты по шагам
+    ├── s24/                     ← S24.5 import и read-only UI
     └── v15/                     ← дизайн многомагазинной версии
         ├── DESIGN.md
         ├── DESIGN_PARSERS.md
@@ -60,6 +61,7 @@ docs/
 
 - [RULES.md](development/RULES.md) — обязательные правила (версия 0.1).
 - [ARCHITECTURE.md](development/ARCHITECTURE.md) — текущая и целевая архитектура.
+- [S24_READ_ONLY_UI.md](development/s24/S24_READ_ONLY_UI.md) — отдельная модель наблюдений, read-only API и интерфейс S24.
 - [ADR-индекс](development/adr/README.md) — архитектурные решения.
 - [TODO.md](../TODO.md) — master-план по шагам; [TODO_SPRINTS.md](TODO_SPRINTS.md) — разбивка.
 
